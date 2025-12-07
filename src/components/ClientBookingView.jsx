@@ -401,23 +401,8 @@ const ClientBookingView = () => {
                       
                       const handleClick = async () => {
                         if (miReserva && reservaActual) {
-                          // Si es mi reserva, preguntar si quiere cancelar
-                          const result = await Swal.fire({
-                            icon: 'warning',
-                            title: '¿Querés cancelar tu reserva?',
-                            html: `<p style="font-size: 16px; margin: 10px 0;">de la <strong>Cama ${bed}</strong></p>
-                                   <p style="font-size: 14px; color: #666;">${day.day} ${day.date} a las ${time}hs</p>`,
-                            showCancelButton: true,
-                            confirmButtonText: 'Sí, cancelar',
-                            cancelButtonText: 'No, mantener',
-                            confirmButtonColor: '#a855f7',
-                            cancelButtonColor: '#6b7280',
-                            allowOutsideClick: false,
-                            allowEscapeKey: true
-                          });
-                          if (result.isConfirmed) {
-                            cancelBooking(reservaActual.id);
-                          }
+                          // Si es mi reserva, llamar a cancelBooking que muestra el SweetAlert
+                          cancelBooking(reservaActual.id);
                         } else if (!ocupada) {
                           // Si está disponible, hacer reserva
                           handleBedClick(day.day, day.date, time, bed);
