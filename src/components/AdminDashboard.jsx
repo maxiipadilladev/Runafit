@@ -3,6 +3,8 @@ import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Cloc
 import { supabase } from '../lib/supabase';
 
 const AdminDashboard = () => {
+  const [usuario, setUsuario] = useState(null);
+  const [estudio, setEstudio] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -13,11 +15,18 @@ const AdminDashboard = () => {
   const [newUser, setNewUser] = useState({
     dni: '',
     nombre: '',
-    telefono: ''
+    telefono: '',
+    estudio_id: ''
   });
 
-  // Cargar todas las reservas con información de usuario y cama
+  // Cargar datos del admin y estudio
   useEffect(() => {
+    const storedUser = localStorage.getItem('usuario');
+    if (storedUser) {
+      const user = JSON.parse(storedUser);
+      setUsuario(user);
+      fetchEstudio(user.estudio_id);
+    }
     fetchReservas();
 
     // Suscripción a cambios en tiempo real
@@ -35,6 +44,23 @@ const AdminDashboard = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const fetchEstudio = async (estudioId) => {
+    try {
+      const { data, error } = await supabase
+        .from('estudios')
+        .select('*')
+        .eq('id', estudioId)
+        .single();
+
+      if (error) throw error;
+      setEstudio(data);
+      // Auto-llenar estudio_id en el formulario
+      setNewUser(prev => ({ ...prev, estudio_id: estudioId.toString() }));
+    } catch (error) {
+      console.error('Error al cargar estudio:', error);
+    }
+  };
 
   const fetchReservas = async () => {
     try {
@@ -127,7 +153,8 @@ const AdminDashboard = () => {
           dni: newUser.dni,
           nombre: newUser.nombre,
           telefono: newUser.telefono,
-          rol: 'cliente'
+          rol: 'cliente',
+          estudio_id: parseInt(newUser.estudio_id)
         });
 
       if (error) {
@@ -191,6 +218,7 @@ const AdminDashboard = () => {
             <div className="text-3xl font-black">RUNA</div>
             <div className="text-3xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
           </div>
+          {estudio && <h2 className="text-lg font-semibold text-gray-700 mb-2">{estudio.nombre}</h2>}
           <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
           <p className="text-gray-600">Dashboard Administrativo</p>
         </div>

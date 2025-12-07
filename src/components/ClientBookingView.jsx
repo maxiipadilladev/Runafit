@@ -8,6 +8,7 @@ const ClientBookingView = () => {
   const [reservas, setReservas] = useState([]);
   const [todasLasReservas, setTodasLasReservas] = useState([]); // Todas las reservas (incluye otras personas)
   const [usuario, setUsuario] = useState(null);
+  const [estudio, setEstudio] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Cargar usuario actual
@@ -16,8 +17,26 @@ const ClientBookingView = () => {
     if (userStr) {
       const user = JSON.parse(userStr);
       setUsuario(user);
+      fetchEstudio(user.estudio_id);
+      fetchReservas();
+      fetchTodasLasReservas();
     }
   }, []);
+
+  const fetchEstudio = async (estudioId) => {
+    try {
+      const { data, error } = await supabase
+        .from('estudios')
+        .select('*')
+        .eq('id', estudioId)
+        .single();
+
+      if (error) throw error;
+      setEstudio(data);
+    } catch (error) {
+      console.error('Error al cargar estudio:', error);
+    }
+  };
 
   // Cargar reservas del usuario
   useEffect(() => {
@@ -38,6 +57,10 @@ const ClientBookingView = () => {
 
     return () => subscription.unsubscribe();
   }, [usuario]);
+
+  useEffect(() => {
+    fetchTodasLasReservas();
+  }, []);
 
   // Cargar todas las reservas (de todos los usuarios) para mostrar disponibilidad
   useEffect(() => {
@@ -216,6 +239,7 @@ const ClientBookingView = () => {
             <div className="text-2xl font-black">RUNA</div>
             <div className="text-2xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
           </div>
+          {estudio && <p className="text-sm text-gray-500 font-semibold mb-3">{estudio.nombre}</p>}
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Hola, {usuario?.nombre || 'Cliente'} 👋</h1>
           <p className="text-gray-600">Reservá tu próxima clase</p>
         </div>

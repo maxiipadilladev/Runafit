@@ -130,7 +130,7 @@ const LoginView = ({ onLogin }) => {
             <div className="text-5xl font-black text-white">RUNA</div>
             <div className="text-5xl font-black text-pink-300">FIT</div>
           </div>
-          <p className="text-white/80 text-lg">Sistema de Gestión Premium</p>
+          <p className="text-white/80 text-lg">Reservas en línea | Powered by RunaTech</p>
         </div>
 
         {/* Card de Login */}
