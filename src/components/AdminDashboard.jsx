@@ -225,6 +225,23 @@ const AdminDashboard = () => {
     }
 
     try {
+      // Verificar si el DNI ya existe ANTES de insertar
+      const { data: existingUser, error: checkError } = await supabase
+        .from('usuarios')
+        .select('dni, nombre')
+        .eq('dni', newUser.dni)
+        .single();
+
+      if (existingUser) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'DNI ya registrado',
+          html: `Este DNI ya pertenece a: <strong>${existingUser.nombre}</strong><br><br>Verificá que no sea un error de tipeo.`,
+          confirmButtonColor: '#10b981'
+        });
+        return;
+      }
+
       const { data: newUserData, error } = await supabase
         .from('usuarios')
         .insert({
@@ -243,7 +260,7 @@ const AdminDashboard = () => {
           Swal.fire({
             icon: 'warning',
             title: 'DNI duplicado',
-            text: 'Este DNI ya está registrado',
+            text: 'Este DNI ya está registrado en el sistema',
             confirmButtonColor: '#10b981'
           });
         } else {
