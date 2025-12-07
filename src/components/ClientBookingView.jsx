@@ -229,53 +229,108 @@ const ClientBookingView = () => {
   const confirmBooking = async () => {
     if (!usuario || !selectedSlot) return;
 
-    const { error } = await supabase
-      .from('reservas')
-      .insert({
-        usuario_id: usuario.id,
-        fecha: selectedSlot.fecha,
-        hora: selectedSlot.time,
-        cama_id: selectedSlot.bed,
-        estado: 'pendiente'
-      });
+    try {
+      // Verificar nuevamente disponibilidad JUSTO antes de insertar (race condition)
+      const { data: verificacionFinal } = await supabase
+        .from('reservas')
+        .select('cama_id')
+        .eq('fecha', selectedSlot.fecha)
+        .eq('hora', selectedSlot.time + ':00')
+        .eq('cama_id', selectedSlot.bed)
+        .neq('estado', 'cancelada')
+        .single();
 
-    if (error) {
-      if (error.code === '23505') {
+      if (verificacionFinal) {
         Swal.fire({
           icon: 'error',
           title: 'Cama ocupada',
-          text: 'Esa cama ya fue reservada por otra persona',
+          text: 'Otra persona reservó esta cama mientras confirmabas. Intentá con otro horario.',
           confirmButtonColor: '#a855f7'
         });
-      } else {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error al reservar',
-          text: 'Intenta de nuevo más tarde',
-          confirmButtonColor: '#a855f7'
-        });
+        setSelectedSlot(null);
+        await fetchTodasLasReservas();
+        return;
       }
-      return;
+
+      const { error } = await supabase
+        .from('reservas')
+        .insert({
+          usuario_id: usuario.id,
+          fecha: selectedSlot.fecha,
+          hora: selectedSlot.time + ':00',
+          cama_id: selectedSlot.bed,
+          estado: 'pendiente'
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          Swal.fire({
+            icon: 'error',
+            title: 'Cama ocupada',
+            text: 'Esa cama ya fue reservada por otra persona en este momento',
+            confirmButtonColor: '#a855f7'
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al reservar',
+            text: 'Intenta de nuevo más tarde',
+            confirmButtonColor: '#a855f7'
+          });
+        }
+        setSelectedSlot(null);
+        await fetchTodasLasReservas();
+        return;
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: '¡Reserva confirmada!',
+        text: `Cama ${selectedSlot.bed} - ${selectedSlot.time}hs`,
+        confirmButtonColor: '#a855f7'
+      });
+
+      setSelectedSlot(null);
+      
+      // Actualizar listas de reservas
+      await fetchReservas();
+      await fetchTodasLasReservas();
+    } catch (error) {
+      console.error('Error en confirmBooking:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al reservar',
+        text: 'Hubo un problema. Intenta de nuevo.',
+        confirmButtonColor: '#a855f7'
+      });
+      setSelectedSlot(null);
     }
-
-    Swal.fire({
-      icon: 'success',
-      title: '¡Reserva confirmada!',
-      text: `Cama ${selectedSlot.bed} - ${selectedSlot.time}hs`,
-      confirmButtonColor: '#a855f7'
-    });
-
-    setSelectedSlot(null);
-    
-    // Actualizar listas de reservas
-    await fetchReservas();
-    await fetchTodasLasReservas();
   };
 
   const cancelBooking = async (reservaId) => {
     // Encontrar los detalles de la reserva
     const reserva = reservas.find(r => r.id === reservaId);
     if (!reserva) return;
+
+    // Verificar si la cancelación es con menos de 2 horas de anticipación
+    const fechaReserva = new Date(reserva.fecha + 'T' + reserva.hora);
+    const ahora = new Date();
+    const horasRestantes = (fechaReserva - ahora) / (1000 * 60 * 60);
+
+    if (horasRestantes < 2 && horasRestantes > 0) {
+      const confirmCancelacion = await Swal.fire({
+        icon: 'warning',
+        title: '⚠️ Cancelación tardía',
+        html: `Falta menos de 2 horas para tu clase.<br><br>¿Estás segura que querés cancelar?`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cancelar igual',
+        cancelButtonText: 'No, mantener',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280'
+      });
+
+      if (!confirmCancelacion.isConfirmed) return;
+    }
 
     const fecha = new Date(reserva.fecha + 'T00:00:00');
     const dia = fecha.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
