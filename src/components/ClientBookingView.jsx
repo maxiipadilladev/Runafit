@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Check, X, Trash2, AlertCircle, CreditCard, Zap, Settings, Plus, Minus, User } from 'lucide-react';
+import { Calendar, Clock, Check, X, Trash2, AlertCircle, CreditCard, Zap, Settings, Plus, Minus, User, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useCreditos } from '../hooks/useCreditos';
 import Swal from 'sweetalert2';
 
 const ClientBookingView = () => {
@@ -11,7 +12,9 @@ const ClientBookingView = () => {
   const [usuario, setUsuario] = useState(null);
   const [estudio, setEstudio] = useState(null);
   const [scheduleAlumna, setScheduleAlumna] = useState([]); // Horarios personalizados de la alumna
+  const [creditos, setCreditos] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { getCreditos, validarCreditos } = useCreditos();
 
   // Cargar usuario actual
   useEffect(() => {
@@ -21,6 +24,7 @@ const ClientBookingView = () => {
       setUsuario(user);
       fetchEstudio(user.estudio_id);
       fetchScheduleAlumna(user.id); // Cargar horarios personalizados
+      fetchCreditos(user.id); // Cargar créditos disponibles
       fetchReservas();
       fetchTodasLasReservas();
     }
@@ -52,6 +56,16 @@ const ClientBookingView = () => {
       setScheduleAlumna(data || []);
     } catch (error) {
       console.error('Error al cargar horarios personalizados:', error);
+    }
+  };
+
+  const fetchCreditos = async (usuarioId) => {
+    try {
+      const creditosData = await getCreditos(usuarioId);
+      setCreditos(creditosData);
+    } catch (error) {
+      console.error('Error al cargar créditos:', error);
+      setCreditos(null);
     }
   };
 
@@ -176,6 +190,19 @@ const ClientBookingView = () => {
   const beds = [1, 2, 3, 4, 5, 6];
 
   const handleBedClick = async (day, date, time) => {
+    // NUEVA LÓGICA: Validar créditos antes de intentar reservar
+    const validacion = await validarCreditos(usuario.id);
+    
+    if (!validacion.disponible) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sin créditos disponibles',
+        text: validacion.mensaje,
+        confirmButtonColor: '#a855f7'
+      });
+      return;
+    }
+
     // Convertir fecha legible a formato ISO
     const [dayNum, month] = date.split(' ');
     const year = new Date().getFullYear();
@@ -210,6 +237,7 @@ const ClientBookingView = () => {
       .eq('hora', time + ':00')
       .neq('estado', 'cancelada');
 
+    const beds = [1, 2, 3, 4, 5, 6];
     const camasOcupadas = reservasEnEseHorario?.map(r => r.cama_id) || [];
     const camaDisponible = beds.find(bed => !camasOcupadas.includes(bed));
 
@@ -252,6 +280,7 @@ const ClientBookingView = () => {
         return;
       }
 
+      // El trigger automáticamente asignará el crédito y descontará
       const { error } = await supabase
         .from('reservas')
         .insert({
@@ -259,7 +288,7 @@ const ClientBookingView = () => {
           fecha: selectedSlot.fecha,
           hora: selectedSlot.time + ':00',
           cama_id: selectedSlot.bed,
-          estado: 'pendiente'
+          estado: 'confirmada' // Estado cambiado a confirmada (descuento automático)
         });
 
       if (error) {
@@ -286,15 +315,17 @@ const ClientBookingView = () => {
       Swal.fire({
         icon: 'success',
         title: '¡Reserva confirmada!',
-        text: `Cama ${selectedSlot.bed} - ${selectedSlot.time}hs`,
+        html: `<p>Cama <strong>${selectedSlot.bed}</strong> - <strong>${selectedSlot.time}hs</strong></p>
+               <p style="font-size: 12px; color: #666; margin-top: 10px;">Se descontó 1 crédito de tu pack</p>`,
         confirmButtonColor: '#a855f7'
       });
 
       setSelectedSlot(null);
       
-      // Actualizar listas de reservas
+      // Actualizar listas de reservas y créditos
       await fetchReservas();
       await fetchTodasLasReservas();
+      await fetchCreditos(usuario.id);
     } catch (error) {
       console.error('Error en confirmBooking:', error);
       Swal.fire({
@@ -403,7 +434,45 @@ const ClientBookingView = () => {
           </div>
           {estudio && <p className="text-sm text-gray-500 font-semibold mb-3">{estudio.nombre}</p>}
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Hola, {usuario?.nombre || 'Cliente'} 👋</h1>
-          <p className="text-gray-600">Reservá tu próxima clase</p>
+          <p className="text-gray-600 mb-4">Reservá tu próxima clase</p>
+
+          {/* Panel de Créditos */}
+          {creditos ? (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border-l-4 border-green-500">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Gift size={16} className="text-green-600" />
+                  Tu Pack
+                </span>
+                <span className="text-xs text-gray-500">
+                  {creditos.dias_para_vencer > 0 
+                    ? `Vence en ${creditos.dias_para_vencer} días`
+                    : 'Vencido'}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700 mb-2">{creditos.pack_nombre}</p>
+              <div className="flex items-center justify-between">
+                <div className="flex-1 bg-gray-200 rounded-full h-2 mr-3 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-green-400 to-emerald-500 h-full transition-all"
+                    style={{ width: `${(creditos.creditos_restantes / creditos.creditos_totales) * 100}%` }}
+                  />
+                </div>
+                <span className="text-lg font-bold text-green-600">
+                  {creditos.creditos_restantes}/{creditos.creditos_totales}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-yellow-50 rounded-lg p-4 border-l-4 border-yellow-500">
+              <p className="text-sm text-yellow-700 font-semibold">
+                ⚠️ No tenés packs activos
+              </p>
+              <p className="text-xs text-yellow-600 mt-1">
+                Contactá al estudio para comprar un pack de clases
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

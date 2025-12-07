@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Clock, X, Plus } from 'lucide-react';
+import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Clock, X, Plus, Gift } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { AdminPacks } from './AdminPacks';
+import { VenderPackModal } from './VenderPackModal';
+import { useCreditos } from '../hooks/useCreditos';
 import Swal from 'sweetalert2';
 
 const AdminDashboard = () => {
@@ -8,9 +11,14 @@ const AdminDashboard = () => {
   const [estudio, setEstudio] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showVenderPackModal, setShowVenderPackModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedAlumna, setSelectedAlumna] = useState(null);
   const [reservas, setReservas] = useState([]);
+  const [alumnas, setAlumnas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('reservas'); // 'reservas' | 'alumnas' | 'packs'
+  const { getTodosCreditosAlumna } = useCreditos();
 
   // Estado para formulario de nuevo usuario
   const [newUser, setNewUser] = useState({
@@ -38,6 +46,7 @@ const AdminDashboard = () => {
       fetchEstudio(user.estudio_id);
     }
     fetchReservas();
+    fetchAlumnas();
 
     // Suscripción a cambios en tiempo real
     const channel = supabase
@@ -92,6 +101,24 @@ const AdminDashboard = () => {
       alert('Error al cargar las reservas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAlumnas = async () => {
+    try {
+      if (!usuario) return;
+      
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('estudio_id', usuario.estudio_id)
+        .eq('rol', 'cliente')
+        .order('nombre', { ascending: true });
+
+      if (error) throw error;
+      setAlumnas(data || []);
+    } catch (error) {
+      console.error('Error al cargar alumnas:', error);
     }
   };
 
@@ -338,7 +365,7 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
       <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
+        <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6 mb-6">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-4">
               <div className="text-4xl font-black">RUNA</div>
@@ -354,6 +381,43 @@ const AdminDashboard = () => {
           >
             <Plus className="w-4 md:w-5 h-4 md:h-5" />
             <span>Nueva Cliente</span>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('reservas')}
+            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
+              activeTab === 'reservas'
+                ? 'text-purple-600 border-purple-600'
+                : 'text-gray-600 border-transparent hover:text-gray-800'
+            }`}
+          >
+            <Calendar className="inline mr-2 w-4 h-4" />
+            Reservas
+          </button>
+          <button
+            onClick={() => setActiveTab('alumnas')}
+            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
+              activeTab === 'alumnas'
+                ? 'text-purple-600 border-purple-600'
+                : 'text-gray-600 border-transparent hover:text-gray-800'
+            }`}
+          >
+            <Users className="inline mr-2 w-4 h-4" />
+            Alumnas
+          </button>
+          <button
+            onClick={() => setActiveTab('packs')}
+            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
+              activeTab === 'packs'
+                ? 'text-purple-600 border-purple-600'
+                : 'text-gray-600 border-transparent hover:text-gray-800'
+            }`}
+          >
+            <Gift className="inline mr-2 w-4 h-4" />
+            Packs
           </button>
         </div>
       </div>
@@ -649,6 +713,83 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Modal de Vender Pack */}
+      {estudio && selectedAlumna && (
+        <VenderPackModal
+          isOpen={showVenderPackModal}
+          onClose={() => {
+            setShowVenderPackModal(false);
+            setSelectedAlumna(null);
+          }}
+          alumna={selectedAlumna}
+          estudio={estudio}
+          onVendido={() => {
+            setShowVenderPackModal(false);
+            setSelectedAlumna(null);
+          }}
+        />
+      )}
+
+      {/* Contenido según pestaña activa */}
+      {activeTab === 'reservas' && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+            <button 
+              onClick={() => setShowPaymentModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <DollarSign className="w-8 h-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Registrar Pago</h3>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-600">Cliente</span>
+                <span className="font-semibold">{selectedBooking.usuario.nombre}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-600">Turno</span>
+                <span className="font-semibold">
+                  {formatFecha(selectedBooking.fecha, selectedBooking.hora)} {selectedBooking.hora.slice(0, 5)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-600">Cama</span>
+                <span className="font-semibold">{selectedBooking.cama.nombre}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                <span className="text-gray-600">Monto</span>
+                <span className="font-bold text-green-600">$8.000</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Método de Pago
+              </label>
+              <select className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                <option>Efectivo</option>
+                <option>Transferencia</option>
+                <option>Mercado Pago</option>
+              </select>
+            </div>
+
+            <button
+              onClick={confirmPayment}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
+            >
+              Confirmar Pago
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabla de Reservas */}
       <div className="bg-white rounded-xl shadow-md overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -740,6 +881,110 @@ const AdminDashboard = () => {
           </table>
         </div>
       </div>
+      )}
+
+      {activeTab === 'alumnas' && (
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-800">Gestionar Créditos de Alumnas</h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nombre
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    DNI
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Teléfono
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Créditos Activos
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {alumnas.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
+                      No hay alumnas registradas
+                    </td>
+                  </tr>
+                ) : (
+                  alumnas.map((alumna) => (
+                    <tr key={alumna.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{alumna.nombre}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {alumna.dni}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {alumna.telefono}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={async () => {
+                            const creditos = await getTodosCreditosAlumna(alumna.id);
+                            const activos = creditos.filter(c => c.estado === 'activo');
+                            if (activos.length === 0) {
+                              Swal.fire({
+                                icon: 'info',
+                                title: 'Sin créditos activos',
+                                text: `${alumna.nombre} no tiene packs activos`,
+                                confirmButtonColor: '#10b981'
+                              });
+                            } else {
+                              Swal.fire({
+                                icon: 'info',
+                                title: 'Créditos Activos',
+                                html: activos.map(c => `
+                                  <div style="margin: 10px 0; padding: 10px; background: #f0f9ff; border-radius: 5px; text-align: left;">
+                                    <strong>${c.pack.nombre}</strong><br/>
+                                    ${c.creditos_restantes}/${c.creditos_totales} clases<br/>
+                                    <small style="color: #666;">Vence: ${new Date(c.fecha_vencimiento).toLocaleDateString('es-AR')}</small>
+                                  </div>
+                                `).join(''),
+                                confirmButtonColor: '#10b981'
+                              });
+                            }
+                          }}
+                          className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-medium transition-colors text-sm"
+                        >
+                          Ver
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            setSelectedAlumna(alumna);
+                            setShowVenderPackModal(true);
+                          }}
+                          className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-medium transition-colors text-sm flex items-center gap-2"
+                        >
+                          <Gift className="w-4 h-4" />
+                          Vender Pack
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'packs' && estudio && (
+        <AdminPacks estudio={estudio} />
+      )}
     </div>
   );
 };
