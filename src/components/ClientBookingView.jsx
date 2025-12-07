@@ -439,9 +439,12 @@ const ClientBookingView = () => {
         showConfirmButton: false,
         confirmButtonColor: '#a855f7'
       });
-      await fetchReservas();
-      await fetchTodasLasReservas();
-      await fetchCreditos(usuario.id); // Actualizar créditos en vivo
+      // Esperar un poco antes de refrescar para asegurar que el trigger ejecutó
+      setTimeout(async () => {
+        await fetchReservas();
+        await fetchTodasLasReservas();
+        await fetchCreditos(usuario.id); // Actualizar créditos en vivo
+      }, 500);
     }
   };
 
