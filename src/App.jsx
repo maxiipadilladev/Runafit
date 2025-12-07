@@ -99,8 +99,9 @@ function App() {
             <div className="flex gap-2">
               {Object.entries(views)
                 .filter(([key]) => {
-                  // Ocultar landing y mostrar solo vistas según rol
-                  if (key === 'landing') return false;
+                  // Mostrar landing solo para admins
+                  if (key === 'landing') return usuario.rol === 'admin';
+                  // Filtrar según rol
                   if (usuario.rol === 'admin') return key !== 'bookings';
                   return key !== 'admin';
                 })
