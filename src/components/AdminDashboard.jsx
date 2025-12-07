@@ -29,7 +29,7 @@ const AdminDashboard = () => {
   const [reservas, setReservas] = useState([]);
   const [alumnas, setAlumnas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("reservas"); // 'reservas' | 'alumnas' | 'packs'
+  const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'users' | 'packs'
   const { getTodosCreditosAlumna } = useCreditos();
 
   // Estado para formulario de nuevo usuario
@@ -426,67 +426,19 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
       <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6 mb-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="text-4xl font-black">RUNA</div>
-              <div className="text-4xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-                FIT
-              </div>
-            </div>
-            {estudio && (
-              <h2 className="text-lg md:text-xl font-bold text-purple-600 mb-4">
-                {estudio.nombre}
-              </h2>
-            )}
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">
               Panel de Control
             </h1>
-            <p className="text-gray-500 text-sm">Dashboard Administrativo</p>
+            <p className="text-sm text-gray-500">Gestión administrativa</p>
           </div>
           <button
             onClick={() => setShowUserModal(true)}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-2 md:py-3 px-3 md:px-5 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap text-sm md:text-base"
+            className="w-full md:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"
           >
-            <Plus className="w-4 md:w-5 h-4 md:h-5" />
-            <span>Nueva Cliente</span>
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab("reservas")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "reservas"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Calendar className="inline mr-2 w-4 h-4" />
-            Reservas
-          </button>
-          <button
-            onClick={() => setActiveTab("alumnas")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "alumnas"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Users className="inline mr-2 w-4 h-4" />
-            Alumnas
-          </button>
-          <button
-            onClick={() => setActiveTab("packs")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "packs"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Package className="inline mr-2 w-4 h-4" />
-            Packs
+            <Plus className="w-5 h-5" />
+            Nueva Cliente
           </button>
         </div>
       </div>
@@ -682,55 +634,57 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">
-                Turnos Activos
-              </p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
-                {reservas.length}
-              </p>
-            </div>
-            <div className="bg-purple-100 p-3 rounded-full">
-              <Calendar className="w-6 h-6 text-purple-600" />
-            </div>
+      {/* KPIs Section - Scroll Horizontal en Mobile */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* Card Turnos */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Turnos Activos
+            </p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">
+              {reservas.length}
+            </p>
+          </div>
+          <div className="bg-purple-50 p-2.5 rounded-lg">
+            <Calendar className="w-5 h-5 text-purple-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">
-                Caja Mes Actual
-              </p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
-                ${kpis.recaudacion.toLocaleString("es-AR")}
-              </p>
-            </div>
-            <div className="bg-green-100 p-3 rounded-full">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
+        {/* Card Caja */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Caja Mensual
+            </p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">
+              ${kpis.recaudacion.toLocaleString("es-AR")}
+            </p>
+          </div>
+          <div className="bg-green-50 p-2.5 rounded-lg">
+            <DollarSign className="w-5 h-5 text-green-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-red-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">
-                Vencimientos (7d)
-              </p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
+        {/* Card Vencimientos */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Vencimientos (7d)
+            </p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-gray-800 mt-1">
                 {kpis.vencimientos}
               </p>
-              <p className="text-xs text-red-500 font-semibold">
-                Alumnas en riesgo
-              </p>
+              {kpis.vencimientos > 0 && (
+                <span className="text-xs text-red-500 font-medium">
+                  Atención
+                </span>
+              )}
             </div>
-            <div className="bg-red-100 p-3 rounded-full">
-              <AlertCircle className="w-6 h-6 text-red-600" />
-            </div>
+          </div>
+          <div className="bg-red-50 p-2.5 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-red-600" />
           </div>
         </div>
       </div>
@@ -765,8 +719,47 @@ const AdminDashboard = () => {
         />
       )}
 
+      {/* Tabs Menu - Debajo de los contadores */}
+      <div className="flex overflow-x-auto gap-2 pb-4 mb-2 no-scrollbar">
+        <button
+          onClick={() => setActiveTab("bookings")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "bookings"
+              ? "bg-indigo-600 text-white shadow-md relative"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Calendar className="inline mr-2 w-4 h-4" />
+          Reservas
+        </button>
+
+        <button
+          onClick={() => setActiveTab("users")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "users"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Users className="inline mr-2 w-4 h-4" />
+          Alumnas
+        </button>
+
+        <button
+          onClick={() => setActiveTab("packs")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "packs"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Package className="inline mr-2 w-4 h-4" />
+          Packs
+        </button>
+      </div>
+
       {/* Contenido según pestaña activa */}
-      {activeTab === "reservas" && (
+      {activeTab === "bookings" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800">
@@ -781,17 +774,17 @@ const AdminDashboard = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Cliente
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Teléfono
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Turno
+                    Fecha/Hora
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cama
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    Actividad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pack Usado
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    Estado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -803,23 +796,33 @@ const AdminDashboard = () => {
                   <tr>
                     <td
                       colSpan="6"
-                      className="px-6 py-8 text-center text-gray-500"
+                      className="px-6 py-4 text-center text-gray-500"
                     >
-                      No hay reservas activas
+                      No hay reservas activas hoy
                     </td>
                   </tr>
                 ) : (
                   reservas.map((reserva) => (
-                    <tr
-                      key={reserva.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
+                    <tr key={reserva.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-medium text-gray-900">
-                          {reserva.usuario.nombre}
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                              {reserva.usuario.nombre.charAt(0)}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {reserva.usuario.nombre}
+                            </div>
+                            {/* Mostrar teléfono solo en móvil debajo del nombre */}
+                            <div className="text-xs text-gray-500 md:hidden">
+                              {reserva.usuario.telefono}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
                         {reserva.usuario.telefono}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -827,31 +830,18 @@ const AdminDashboard = () => {
                           {formatFecha(reserva.fecha, reserva.hora)}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {reserva.hora.slice(0, 5)}
+                          {reserva.hora.slice(0, 5)} hs
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
-                          {reserva.cama.nombre}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                        {reserva.credito?.pack?.nombre || "Pack Regular"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          Confirmada
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {reserva.credito ? (
-                          <div className="text-sm">
-                            <div className="font-semibold text-gray-900">
-                              {reserva.credito.pack.nombre}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {reserva.credito.creditos_restantes}/
-                              {reserva.credito.creditos_totales} créditos
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-500 italic">
-                            Sin pack
-                          </span>
-                        )}
-                      </td>
+
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex gap-2">
                           <button
@@ -889,7 +879,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {activeTab === "alumnas" && (
+      {activeTab === "users" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800">
@@ -1024,6 +1014,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Packs Tab */}
       {activeTab === "packs" && estudio && <AdminPacks estudio={estudio} />}
     </div>
   );
