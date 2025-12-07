@@ -1,20 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Check, X, Trash2, AlertCircle, CreditCard, Zap, Settings, Plus, Minus, User } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 const ClientBookingView = () => {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [bookings, setBookings] = useState([]);
-  const [showDemoPanel, setShowDemoPanel] = useState(false);
-  const [userName, setUserName] = useState('María');
-  
-  // Estado de pago simulado (cambiá a false para simular deuda)
-  const [paymentStatus, setPaymentStatus] = useState({
-    isPaid: false, // true = al día, false = vencida
-    dueDate: '10/12/2024',
-    amount: 35000,
-    classesRemaining: 4
-  });
+  const [reservas, setReservas] = useState([]);
+  const [todasLasReservas, setTodasLasReservas] = useState([]); // Todas las reservas (incluye otras personas)
+  const [usuario, setUsuario] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Cargar usuario actual
+  useEffect(() => {
+    const userStr = localStorage.getItem('usuario');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setUsuario(user);
+    }
+  }, []);
+
+  // Cargar reservas del usuario
+  useEffect(() => {
+    if (!usuario) return;
+    
+    fetchReservas();
+
+    // Suscripción a cambios en tiempo real
+    const subscription = supabase
+      .channel('reservas-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'reservas',
+        filter: `usuario_id=eq.${usuario.id}`
+      }, fetchReservas)
+      .subscribe();
+
+    return () => subscription.unsubscribe();
+  }, [usuario]);
+
+  // Cargar todas las reservas (de todos los usuarios) para mostrar disponibilidad
+  useEffect(() => {
+    fetchTodasLasReservas();
+
+    // Suscripción a cambios en todas las reservas
+    const subscription = supabase
+      .channel('todas-reservas-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'reservas'
+      }, fetchTodasLasReservas)
+      .subscribe();
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchReservas = async () => {
+    if (!usuario) return;
+    
+    const { data, error } = await supabase
+      .from('reservas')
+      .select(`
+        *,
+        cama:camas(nombre)
+      `)
+      .eq('usuario_id', usuario.id)
+      .gte('fecha', new Date().toISOString().split('T')[0])
+      .order('fecha', { ascending: true });
+
+    if (!error && data) {
+      setReservas(data);
+    }
+    setLoading(false);
+  };
+
+  const fetchTodasLasReservas = async () => {
+    const { data } = await supabase
+      .from('reservas')
+      .select('fecha, hora, cama_id, estado')
+      .gte('fecha', new Date().toISOString().split('T')[0])
+      .neq('estado', 'cancelada');
+
+    if (data) {
+      setTodasLasReservas(data);
+    }
+  };
 
   // Datos mockeados
   const schedule = [
@@ -25,47 +96,110 @@ const ClientBookingView = () => {
 
   const beds = [1, 2, 3, 4, 5, 6];
 
-  // Simular camas ocupadas
-  const occupiedBeds = {
-    'Lunes-19:00': [1, 3, 5],
-    'Miércoles-17:00': [2, 4],
-    'Viernes-20:00': [1, 2, 3, 6]
+  const handleBedClick = async (day, date, time, bed) => {
+    // Convertir fecha legible a formato ISO
+    const [dayNum, month] = date.split(' ');
+    const year = new Date().getFullYear();
+    const monthNum = { 'Dic': 12, 'Ene': 1, 'Feb': 2, 'Mar': 3, 'Abr': 4, 'May': 5, 
+                       'Jun': 6, 'Jul': 7, 'Ago': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11 }[month] || 12;
+    const fechaISO = `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    
+    // NUEVA VALIDACIÓN: Verificar si el usuario ya tiene una reserva en ese horario
+    const { data: misReservasEnEseHorario } = await supabase
+      .from('reservas')
+      .select('*')
+      .eq('usuario_id', usuario.id)
+      .eq('fecha', fechaISO)
+      .eq('hora', time + ':00')
+      .neq('estado', 'cancelada');
+
+    if (misReservasEnEseHorario && misReservasEnEseHorario.length > 0) {
+      alert('⚠️ Ya tenés una reserva en este horario. No podés reservar dos camas al mismo tiempo.');
+      return;
+    }
+    
+    // Verificar si la cama específica está ocupada
+    const { data: reservasExistentes } = await supabase
+      .from('reservas')
+      .select('cama_id')
+      .eq('fecha', fechaISO)
+      .eq('hora', time + ':00')
+      .neq('estado', 'cancelada');
+
+    const camaOcupada = reservasExistentes?.some(r => r.cama_id === bed);
+    
+    if (camaOcupada) {
+      alert('❌ Esa cama ya está reservada por otra persona');
+      return;
+    }
+    
+    setSelectedSlot({ day, date, time, bed, fecha: fechaISO });
   };
 
-  const isBedOccupied = (day, time, bed) => {
-    const key = `${day}-${time}`;
-    return occupiedBeds[key]?.includes(bed) || 
-           bookings.some(b => b.day === day && b.time === time && b.bed === bed);
-  };
+  const confirmBooking = async () => {
+    if (!usuario || !selectedSlot) return;
 
-  const handleBedClick = (day, date, time, bed) => {
-    if (isBedOccupied(day, time, bed)) return;
-    setSelectedSlot({ day, date, time, bed });
-  };
+    const { error } = await supabase
+      .from('reservas')
+      .insert({
+        usuario_id: usuario.id,
+        fecha: selectedSlot.fecha,
+        hora: selectedSlot.time,
+        cama_id: selectedSlot.bed,
+        estado: 'pendiente'
+      });
 
-  const confirmBooking = () => {
-    setBookings([...bookings, selectedSlot]);
+    if (error) {
+      if (error.code === '23505') {
+        alert('❌ Esa cama ya fue reservada por otra persona');
+      } else {
+        alert('Error al reservar. Intentá de nuevo.');
+      }
+      setSelectedSlot(null);
+      return;
+    }
+
     setShowConfirmation(true);
+    setSelectedSlot(null);
+    
+    // Actualizar listas de reservas
+    await fetchReservas();
+    await fetchTodasLasReservas();
+    
     setTimeout(() => {
       setShowConfirmation(false);
-      setSelectedSlot(null);
     }, 3000);
   };
 
-  const cancelBooking = (index) => {
-    if (confirm('¿Querés cancelar este turno?')) {
-      setBookings(bookings.filter((_, i) => i !== index));
+  const cancelBooking = async (reservaId) => {
+    if (!confirm('¿Querés cancelar este turno?')) return;
+
+    const { error } = await supabase
+      .from('reservas')
+      .delete()
+      .eq('id', reservaId);
+
+    if (!error) {
+      alert('Turno cancelado');
+      await fetchReservas();
+      await fetchTodasLasReservas();
     }
   };
 
-  const handlePayNow = () => {
-    alert('🔗 Redirigiendo a Mercado Pago...\n\nMonto: $35.000\nConcepto: Cuota Mensual RunaFit');
-    // Aquí iría la integración real con Mercado Pago
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-semibold">Cargando reservas...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-      {/* Botón Demo Mode - Esquina superior derecha */}
+      {/* Panel Demo comentado - descomentar si necesitas testear estados
       <button
         onClick={() => setShowDemoPanel(!showDemoPanel)}
         className="fixed top-2 right-4 z-50 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
@@ -73,89 +207,7 @@ const ClientBookingView = () => {
       >
         <Settings className="w-5 h-5" />
       </button>
-
-      {/* Panel de Controles Demo */}
-      {showDemoPanel && (
-        <div className="fixed top-20 right-4 z-50 bg-white rounded-2xl shadow-2xl p-6 w-80 border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-lg text-gray-800">🎮 Demo Controls</h3>
-            <button onClick={() => setShowDemoPanel(false)} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {/* Toggle Estado de Pago */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm font-semibold text-gray-700">Estado de Pago</span>
-                <button
-                  onClick={() => setPaymentStatus({...paymentStatus, isPaid: !paymentStatus.isPaid})}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    paymentStatus.isPaid ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    paymentStatus.isPaid ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
-                </button>
-              </label>
-              <p className="text-xs text-gray-500 mt-1">
-                {paymentStatus.isPaid ? '✅ Al día' : '❌ Vencida'}
-              </p>
-            </div>
-
-            {/* Contador de Clases */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <label className="text-sm font-semibold text-gray-700 block mb-2">Clases Restantes</label>
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  onClick={() => setPaymentStatus({...paymentStatus, classesRemaining: Math.max(0, paymentStatus.classesRemaining - 1)})}
-                  className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition-colors"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <span className="text-2xl font-bold text-purple-600 min-w-[3rem] text-center">
-                  {paymentStatus.classesRemaining}
-                </span>
-                <button
-                  onClick={() => setPaymentStatus({...paymentStatus, classesRemaining: paymentStatus.classesRemaining + 1})}
-                  className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Cambiar Nombre */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <label className="text-sm font-semibold text-gray-700 block mb-2">
-                <User className="w-4 h-4 inline mr-1" />
-                Nombre Usuario
-              </label>
-              <input
-                type="text"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all outline-none"
-                placeholder="Nombre"
-              />
-            </div>
-
-            {/* Reset */}
-            <button
-              onClick={() => {
-                setPaymentStatus({ isPaid: false, dueDate: '10/12/2024', amount: 35000, classesRemaining: 4 });
-                setUserName('María');
-                setBookings([]);
-              }}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 rounded-lg transition-colors text-sm"
-            >
-              🔄 Reset Demo
-            </button>
-          </div>
-        </div>
-      )}
+      */}
 
       {/* Header */}
       <div className="max-w-md mx-auto mb-6">
@@ -164,76 +216,9 @@ const ClientBookingView = () => {
             <div className="text-2xl font-black">RUNA</div>
             <div className="text-2xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">Hola, {userName} 👋</h1>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Hola, {usuario?.nombre || 'Cliente'} 👋</h1>
           <p className="text-gray-600">Reservá tu próxima clase</p>
         </div>
-      </div>
-
-      {/* Tarjeta de Estado de Pago */}
-      <div className="max-w-md mx-auto mb-6">
-        {!paymentStatus.isPaid ? (
-          // Estado: CUOTA VENCIDA
-          <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-red-100 p-3 rounded-full">
-                    <AlertCircle className="w-6 h-6 text-red-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-red-900">Cuota Vencida</h3>
-                    <p className="text-sm text-red-700">Vencimiento: {paymentStatus.dueDate}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-black text-red-900">${paymentStatus.amount.toLocaleString()}</p>
-                </div>
-              </div>
-              
-              <button
-                onClick={handlePayNow}
-                className="w-full bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
-              >
-                <CreditCard className="w-5 h-5" />
-                <span>Pagar Ahora con Mercado Pago</span>
-              </button>
-              
-              <p className="text-xs text-red-700 text-center mt-3">
-                ⚠️ No podrás reservar nuevos turnos hasta regularizar el pago
-              </p>
-            </div>
-          </div>
-          
-        ) : (
-          // Estado: AL DÍA
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-2xl shadow-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-green-100 p-3 rounded-full">
-                    <Check className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-green-900">Cuota al Día ✨</h3>
-                    <p className="text-sm text-green-700">Próximo vencimiento: {paymentStatus.dueDate}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white/60 rounded-xl p-4 border border-green-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-green-600" />
-                    <span className="font-semibold text-green-900">Clases Restantes</span>
-                  </div>
-                  <div className="text-3xl font-black text-green-600">
-                    {paymentStatus.classesRemaining}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Confirmación Toast */}
@@ -317,29 +302,63 @@ const ClientBookingView = () => {
                   
                   <div className="grid grid-cols-3 gap-2">
                     {beds.map((bed) => {
-                      const occupied = isBedOccupied(day.day, time, bed);
-                      const booked = bookings.some(b => 
-                        b.day === day.day && b.time === time && b.bed === bed
-                      );
+                      // Convertir fecha a formato ISO para comparar
+                      const [dayNum, month] = day.date.split(' ');
+                      const year = new Date().getFullYear();
+                      const monthNum = { 'Dic': 12, 'Ene': 1, 'Feb': 2, 'Mar': 3, 'Abr': 4, 'May': 5, 
+                                         'Jun': 6, 'Jul': 7, 'Ago': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11 }[month] || 12;
+                      const fechaISO = `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                      
+                      // Verificar si esta cama está en mis reservas
+                      const miReserva = reservas.some(r => {
+                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
+                      });
+
+                      // Verificar si está ocupada por alguien más
+                      const ocupada = todasLasReservas.some(r => {
+                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
+                      });
+
+                      // Obtener el ID de mi reserva si existe
+                      const reservaActual = reservas.find(r => {
+                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
+                      });
+                      
+                      const handleClick = () => {
+                        if (miReserva && reservaActual) {
+                          // Si es mi reserva, preguntar si quiere cancelar
+                          if (confirm(`¿Querés cancelar tu reserva de la Cama ${bed} el ${day.day} ${day.date} a las ${time}?`)) {
+                            cancelBooking(reservaActual.id);
+                          }
+                        } else if (!ocupada) {
+                          // Si está disponible, hacer reserva
+                          handleBedClick(day.day, day.date, time, bed);
+                        }
+                      };
                       
                       return (
                         <button
                           key={bed}
-                          onClick={() => handleBedClick(day.day, day.date, time, bed)}
-                          disabled={occupied}
+                          onClick={handleClick}
+                          disabled={ocupada && !miReserva}
                           className={`
                             p-4 rounded-xl font-bold transition-all text-sm
-                            ${occupied 
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                              : booked
-                              ? 'bg-green-500 text-white shadow-lg'
+                            ${miReserva
+                              ? 'bg-green-500 text-white shadow-lg cursor-pointer hover:bg-green-600'
+                              : ocupada
+                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                               : 'bg-purple-100 text-purple-700 hover:bg-purple-200 hover:shadow-md active:scale-95'
                             }
                           `}
                         >
-                          {booked ? (
+                          {miReserva ? (
                             <div className="flex flex-col items-center gap-1">
                               <Check className="w-4 h-4" />
+                              <span>Cama {bed}</span>
+                            </div>
+                          ) : ocupada ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <X className="w-4 h-4" />
                               <span>Cama {bed}</span>
                             </div>
                           ) : (
@@ -357,47 +376,60 @@ const ClientBookingView = () => {
       </div>
 
       {/* Mis Reservas */}
-      {bookings.length > 0 && (
+      {reservas.length > 0 && (
         <div className="max-w-md mx-auto mt-6">
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
               <Calendar className="w-5 h-5 text-purple-600" />
-              Mis Próximos Turnos
+              Mis Próximos Turnos ({reservas.length})
             </h3>
             <div className="space-y-3">
-              {bookings.map((booking, idx) => (
-                <div key={idx} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200 shadow-sm">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Check className="w-5 h-5 text-green-600" />
-                        <p className="font-bold text-gray-800">{booking.day} {booking.date}</p>
-                      </div>
-                      <div className="flex items-center gap-3 text-sm text-gray-700 ml-7">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4 text-gray-500" />
-                          <span>{booking.time}</span>
+              {reservas.map((reserva) => {
+                const fecha = new Date(reserva.fecha + 'T00:00:00');
+                const dia = fecha.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
+                
+                return (
+                  <div key={reserva.id} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200 shadow-sm">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Check className="w-5 h-5 text-green-600" />
+                          <p className="font-bold text-gray-800 capitalize">{dia}</p>
                         </div>
-                        <div className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold text-xs">
-                          Cama #{booking.bed}
+                        <div className="flex items-center gap-3 text-sm text-gray-700 ml-7">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            <span>{reserva.hora.slice(0, 5)}</span>
+                          </div>
+                          <div className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold text-xs">
+                            Cama #{reserva.cama_id}
+                          </div>
+                          {reserva.estado === 'confirmada' && (
+                            <span className="text-green-600 text-xs font-semibold">✓ Confirmada</span>
+                          )}
+                          {reserva.estado === 'pendiente' && (
+                            <span className="text-yellow-600 text-xs font-semibold">⏳ Pendiente</span>
+                          )}
                         </div>
                       </div>
+                      <button
+                        onClick={() => cancelBooking(reserva.id)}
+                        className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-lg transition-colors ml-3"
+                        title="Cancelar turno"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => cancelBooking(idx)}
-                      className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-lg transition-colors ml-3"
-                      title="Cancelar turno"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {reserva.estado === 'pendiente' && (
+                      <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2 ml-7">
+                        <p className="text-xs text-yellow-800">
+                          💳 Recordá pagar antes del día de la clase
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2 ml-7">
-                    <p className="text-xs text-yellow-800">
-                      💳 Recordá pagar antes del {booking.day} 17hs
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

@@ -1,75 +1,283 @@
-import React, { useState } from 'react';
-import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Clock, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Clock, X, Plus } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 const AdminDashboard = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
-  const [bookings, setBookings] = useState([
-    { id: 1, client: 'María González', phone: '381-5551234', day: 'Lunes 9/12', time: '19:00', bed: 4, status: 'pending', amount: 8000 },
-    { id: 2, client: 'Ana Martínez', phone: '381-5555678', day: 'Lunes 9/12', time: '17:00', bed: 2, status: 'paid', amount: 8000 },
-    { id: 3, client: 'Laura Fernández', phone: '381-5559012', day: 'Miércoles 11/12', time: '19:00', bed: 1, status: 'paid', amount: 8000 },
-    { id: 4, client: 'Carla Rodríguez', phone: '381-5553456', day: 'Miércoles 11/12', time: '17:00', bed: 5, status: 'overdue', amount: 8000 },
-    { id: 5, client: 'Sofía López', phone: '381-5557890', day: 'Viernes 13/12', time: '20:00', bed: 3, status: 'pending', amount: 8000 },
-    { id: 6, client: 'Valentina Silva', phone: '381-5551111', day: 'Viernes 13/12', time: '19:00', bed: 6, status: 'paid', amount: 8000 },
-  ]);
+  const [reservas, setReservas] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const stats = {
-    totalBookings: bookings.length,
-    revenue: bookings.filter(b => b.status === 'paid').reduce((sum, b) => sum + b.amount, 0),
-    pending: bookings.filter(b => b.status === 'pending').length,
-    occupancy: 85
-  };
+  // Estado para formulario de nuevo usuario
+  const [newUser, setNewUser] = useState({
+    dni: '',
+    nombre: '',
+    telefono: ''
+  });
 
-  const handlePayment = (booking) => {
-    setSelectedBooking(booking);
-    setShowPaymentModal(true);
-  };
+  // Cargar todas las reservas con información de usuario y cama
+  useEffect(() => {
+    fetchReservas();
 
-  const confirmPayment = () => {
-    setBookings(bookings.map(b => 
-      b.id === selectedBooking.id ? { ...b, status: 'paid' } : b
-    ));
-    setShowPaymentModal(false);
-    setSelectedBooking(null);
-  };
+    // Suscripción a cambios en tiempo real
+    const channel = supabase
+      .channel('admin-reservas')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'reservas' },
+        () => {
+          fetchReservas();
+        }
+      )
+      .subscribe();
 
-  const releaseBooking = (bookingId) => {
-    if (confirm('¿Estás segura de liberar este cupo? La cama quedará disponible para otras clientas.')) {
-      setBookings(bookings.filter(b => b.id !== bookingId));
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const fetchReservas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reservas')
+        .select(`
+          *,
+          usuario:usuarios(dni, nombre, telefono),
+          cama:camas(nombre)
+        `)
+        .neq('estado', 'cancelada')
+        .order('fecha', { ascending: true })
+        .order('hora', { ascending: true });
+
+      if (error) throw error;
+      setReservas(data || []);
+    } catch (error) {
+      console.error('Error al cargar reservas:', error);
+      alert('Error al cargar las reservas');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusBadge = (status) => {
+  // Calcular estadísticas en base a datos reales
+  const stats = {
+    totalBookings: reservas.length,
+    revenue: reservas.filter(r => r.estado === 'pagada').length * 8000,
+    pending: reservas.filter(r => r.estado === 'pendiente').length,
+    occupancy: reservas.length > 0 ? Math.round((reservas.length / 42) * 100) : 0 // 7 días * 6 camas = 42 slots semanales
+  };
+
+  const handlePayment = (reserva) => {
+    setSelectedBooking(reserva);
+    setShowPaymentModal(true);
+  };
+
+  const confirmPayment = async () => {
+    try {
+      const { error } = await supabase
+        .from('reservas')
+        .update({ estado: 'pagada' })
+        .eq('id', selectedBooking.id);
+
+      if (error) throw error;
+
+      setShowPaymentModal(false);
+      setSelectedBooking(null);
+      fetchReservas(); // Recargar datos
+    } catch (error) {
+      console.error('Error al confirmar pago:', error);
+      alert('Error al registrar el pago');
+    }
+  };
+
+  const releaseBooking = async (reservaId) => {
+    if (!confirm('¿Estás segura de liberar este cupo? La cama quedará disponible para otras clientas.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('reservas')
+        .delete()
+        .eq('id', reservaId);
+
+      if (error) throw error;
+      fetchReservas(); // Recargar datos
+    } catch (error) {
+      console.error('Error al liberar cupo:', error);
+      alert('Error al eliminar la reserva');
+    }
+  };
+
+  const createNewUser = async () => {
+    if (!newUser.dni || !newUser.nombre || !newUser.telefono) {
+      alert('Por favor completá todos los campos');
+      return;
+    }
+
+    if (newUser.dni.length < 7) {
+      alert('DNI inválido');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .insert({
+          dni: newUser.dni,
+          nombre: newUser.nombre,
+          telefono: newUser.telefono,
+          rol: 'cliente'
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          alert('❌ Este DNI ya está registrado');
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      alert(`✅ Usuario ${newUser.nombre} registrado correctamente`);
+      setNewUser({ dni: '', nombre: '', telefono: '' });
+      setShowUserModal(false);
+    } catch (error) {
+      console.error('Error al crear usuario:', error);
+      alert('Error al registrar el usuario');
+    }
+  };
+
+  const getStatusBadge = (estado) => {
     const styles = {
-      paid: 'bg-green-100 text-green-700',
-      pending: 'bg-yellow-100 text-yellow-700',
-      overdue: 'bg-red-100 text-red-700'
+      pagada: 'bg-green-100 text-green-700',
+      pendiente: 'bg-yellow-100 text-yellow-700'
     };
     const labels = {
-      paid: 'Pagado',
-      pending: 'Pendiente',
-      overdue: 'Vencido'
+      pagada: 'Pagado',
+      pendiente: 'Pendiente'
     };
     return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[status]}`}>
-        {labels[status]}
+      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[estado]}`}>
+        {labels[estado]}
       </span>
     );
   };
 
+  // Formatear fecha legible
+  const formatFecha = (fecha, hora) => {
+    const date = new Date(fecha + 'T00:00:00');
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const dia = dias[date.getDay()];
+    const numero = date.getDate();
+    const mes = date.getMonth() + 1;
+    return `${dia} ${numero}/${mes}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+        <div className="text-xl font-semibold text-gray-600">Cargando dashboard...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="text-3xl font-black">RUNA</div>
-          <div className="text-3xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="text-3xl font-black">RUNA</div>
+            <div className="text-3xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
+          <p className="text-gray-600">Dashboard Administrativo</p>
         </div>
-        <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
-        <p className="text-gray-600">Dashboard Administrativo</p>
+        <button
+          onClick={() => setShowUserModal(true)}
+          className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Nueva Cliente
+        </button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Modal Nuevo Usuario */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+            <button 
+              onClick={() => setShowUserModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Users className="w-8 h-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Registrar Nueva Cliente</h3>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  DNI (sin puntos)
+                </label>
+                <input
+                  type="text"
+                  value={newUser.dni}
+                  onChange={(e) => setNewUser({ ...newUser, dni: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                  placeholder="12345678"
+                  maxLength="8"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  value={newUser.nombre}
+                  onChange={(e) => setNewUser({ ...newUser, nombre: e.target.value })}
+                  placeholder="María González"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Teléfono
+                </label>
+                <input
+                  type="text"
+                  value={newUser.telefono}
+                  onChange={(e) => setNewUser({ ...newUser, telefono: e.target.value })}
+                  placeholder="381-5551234"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-3 mb-6 border border-blue-200">
+              <p className="text-sm text-blue-800">
+                <span className="font-semibold">Nota:</span> La cliente podrá loguearse con su DNI una vez registrada.
+              </p>
+            </div>
+
+            <button
+              onClick={createNewUser}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
+            >
+              Registrar Cliente
+            </button>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
@@ -122,11 +330,11 @@ const AdminDashboard = () => {
 
       {/* Alertas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-red-800 mb-1">1 Pago Vencido</h3>
-            <p className="text-sm text-red-700">Carla Rodríguez - Vencido hace 2 días</p>
+            <h3 className="font-semibold text-yellow-800 mb-1">{stats.pending} Pagos Pendientes</h3>
+            <p className="text-sm text-yellow-700">Recordá confirmar los pagos recibidos</p>
           </div>
         </div>
 
@@ -134,7 +342,7 @@ const AdminDashboard = () => {
           <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
           <div>
             <h3 className="font-semibold text-green-800 mb-1">Sistema Activo</h3>
-            <p className="text-sm text-green-700">Todos los recordatorios enviados correctamente</p>
+            <p className="text-sm text-green-700">Reservas sincronizadas en tiempo real</p>
           </div>
         </div>
       </div>
@@ -160,15 +368,21 @@ const AdminDashboard = () => {
             <div className="space-y-3 mb-6">
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Cliente</span>
-                <span className="font-semibold">{selectedBooking.client}</span>
+                <span className="font-semibold">{selectedBooking.usuario.nombre}</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Turno</span>
-                <span className="font-semibold">{selectedBooking.day} {selectedBooking.time}</span>
+                <span className="font-semibold">
+                  {formatFecha(selectedBooking.fecha, selectedBooking.hora)} {selectedBooking.hora.slice(0, 5)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <span className="text-gray-600">Cama</span>
+                <span className="font-semibold">{selectedBooking.cama.nombre}</span>
               </div>
               <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                 <span className="text-gray-600">Monto</span>
-                <span className="font-bold text-green-600">${selectedBooking.amount.toLocaleString()}</span>
+                <span className="font-bold text-green-600">$8.000</span>
               </div>
             </div>
 
@@ -227,51 +441,59 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {bookings.map((booking) => (
-                <tr key={booking.id} className={`hover:bg-gray-50 transition-colors ${booking.status === 'paid' ? 'bg-green-50' : ''}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-gray-900">{booking.client}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {booking.phone}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{booking.day}</div>
-                    <div className="text-sm text-gray-500">{booking.time}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
-                      #{booking.bed}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                    ${booking.amount.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(booking.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <div className="flex gap-2">
-                      {booking.status !== 'paid' && (
-                        <button
-                          onClick={() => handlePayment(booking)}
-                          className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          Confirmar Pago
-                        </button>
-                      )}
-                      <button
-                        onClick={() => releaseBooking(booking.id)}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
-                      >
-                        <X className="w-4 h-4" />
-                        Liberar Cupo
-                      </button>
-                    </div>
+              {reservas.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                    No hay reservas activas
                   </td>
                 </tr>
-              ))}
+              ) : (
+                reservas.map((reserva) => (
+                  <tr key={reserva.id} className={`hover:bg-gray-50 transition-colors ${reserva.estado === 'pagada' ? 'bg-green-50' : ''}`}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-medium text-gray-900">{reserva.usuario.nombre}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {reserva.usuario.telefono}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{formatFecha(reserva.fecha, reserva.hora)}</div>
+                      <div className="text-sm text-gray-500">{reserva.hora.slice(0, 5)}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+                        {reserva.cama.nombre}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                      $8.000
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {getStatusBadge(reserva.estado)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex gap-2">
+                        {reserva.estado !== 'pagada' && (
+                          <button
+                            onClick={() => handlePayment(reserva)}
+                            className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Confirmar Pago
+                          </button>
+                        )}
+                        <button
+                          onClick={() => releaseBooking(reserva.id)}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                        >
+                          <X className="w-4 h-4" />
+                          Liberar Cupo
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -1,28 +1,111 @@
 import React, { useState } from 'react';
-import { User, Lock, Mail, LogIn, Zap } from 'lucide-react';
+import { User, Lock, Mail, LogIn, Zap, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import bcrypt from 'bcryptjs';
 
-const LoginView = () => {
+const LoginView = ({ onLogin }) => {
   const [activeTab, setActiveTab] = useState('alumna');
   const [dni, setDni] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleAlumnaLogin = () => {
+  const handleAlumnaLogin = async () => {
     if (dni.length < 7) {
       alert('Por favor ingresá un DNI válido');
       return;
     }
-    alert(`✅ Bienvenida! Ingresando con DNI: ${dni}`);
-    // Aquí iría la navegación a la vista cliente
+
+    setLoading(true);
+    try {
+      // Buscar usuario por DNI en Supabase
+      const { data: usuario, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('dni', dni)
+        .single();
+
+      if (error || !usuario) {
+        alert('❌ DNI no encontrado. Consultá con el administrador.');
+        return;
+      }
+
+      // Guardar sesión en localStorage
+      localStorage.setItem('usuario', JSON.stringify(usuario));
+      
+      // Notificar al componente padre (App.jsx)
+      if (onLogin) {
+        onLogin(usuario);
+      }
+      
+      alert(`✅ Bienvenida ${usuario.nombre}!`);
+      
+    } catch (error) {
+      console.error('Error login:', error);
+      alert('Error al iniciar sesión. Verificá tu conexión.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAdminLogin = () => {
+  const handleAdminLogin = async () => {
     if (!email || !password) {
       alert('Por favor completá todos los campos');
       return;
     }
-    alert(`✅ Acceso admin autorizado para: ${email}`);
-    // Aquí iría la navegación al panel admin
+
+    if (password.length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Buscar admin por email (usando campo telefono como username)
+      const { data: usuario, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('telefono', email)
+        .eq('rol', 'admin')
+        .single();
+
+      if (error || !usuario) {
+        alert('❌ Credenciales incorrectas');
+        return;
+      }
+
+      // Verificar contraseña hasheada
+      if (!usuario.password) {
+        alert('❌ Este usuario no tiene contraseña configurada');
+        return;
+      }
+
+      const passwordMatch = await bcrypt.compare(password, usuario.password);
+      
+      if (!passwordMatch) {
+        alert('❌ Contraseña incorrecta');
+        return;
+      }
+
+      // Login exitoso
+      const usuarioSinPassword = { ...usuario };
+      delete usuarioSinPassword.password; // No guardar password en localStorage
+      
+      localStorage.setItem('usuario', JSON.stringify(usuarioSinPassword));
+      
+      if (onLogin) {
+        onLogin(usuarioSinPassword);
+      }
+      
+      alert(`✅ Acceso admin autorizado para: ${usuario.nombre}`);
+      
+    } catch (error) {
+      console.error('Error login admin:', error);
+      alert('Error al iniciar sesión');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleKeyPress = (e, handler) => {
@@ -115,10 +198,20 @@ const LoginView = () => {
 
                 <button
                   onClick={handleAlumnaLogin}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <span>Entrar</span>
-                  <LogIn className="w-5 h-5" />
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Verificando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Entrar</span>
+                      <LogIn className="w-5 h-5" />
+                    </>
+                  )}
                 </button>
 
                 <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
@@ -167,13 +260,24 @@ const LoginView = () => {
                     </div>
                     <input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       onKeyPress={(e) => handleKeyPress(e, handleAdminLogin)}
                       placeholder="••••••••"
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all outline-none"
+                      className="w-full pl-12 pr-12 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all outline-none"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -192,10 +296,20 @@ const LoginView = () => {
 
                 <button
                   onClick={handleAdminLogin}
-                  className="w-full bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <Lock className="w-5 h-5" />
-                  <span>Acceder al Panel</span>
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Verificando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5" />
+                      <span>Acceder al Panel</span>
+                    </>
+                  )}
                 </button>
 
                 <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
