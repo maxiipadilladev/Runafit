@@ -423,16 +423,17 @@ const ClientBookingView = () => {
 
     if (!result.isConfirmed) return;
 
+    // Cambiar estado a 'cancelada' en vez de eliminar (trigger devolverá el crédito)
     const { error } = await supabase
       .from('reservas')
-      .delete()
+      .update({ estado: 'cancelada' })
       .eq('id', reservaId);
 
     if (!error) {
       Swal.fire({
         icon: 'success',
         title: 'Turno cancelado',
-        text: 'La cama está disponible nuevamente',
+        text: 'La cama está disponible nuevamente y tu crédito fue devuelto',
         timer: 1500,
         showConfirmButton: false,
         confirmButtonColor: '#a855f7'
