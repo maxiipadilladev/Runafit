@@ -9,10 +9,8 @@ import Swal from 'sweetalert2';
 const AdminDashboard = () => {
   const [usuario, setUsuario] = useState(null);
   const [estudio, setEstudio] = useState(null);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showVenderPackModal, setShowVenderPackModal] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedAlumna, setSelectedAlumna] = useState(null);
   const [reservas, setReservas] = useState([]);
   const [alumnas, setAlumnas] = useState([]);
@@ -46,7 +44,6 @@ const AdminDashboard = () => {
       fetchEstudio(user.estudio_id);
     }
     fetchReservas();
-    fetchAlumnas();
 
     // Suscripción a cambios en tiempo real
     const channel = supabase
@@ -63,6 +60,13 @@ const AdminDashboard = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Cargar alumnas cuando usuario esté disponible
+  useEffect(() => {
+    if (usuario) {
+      fetchAlumnas();
+    }
+  }, [usuario]);
 
   const fetchEstudio = async (estudioId) => {
     try {
@@ -88,7 +92,12 @@ const AdminDashboard = () => {
         .select(`
           *,
           usuario:usuarios(dni, nombre, telefono),
-          cama:camas(nombre)
+          cama:camas(nombre),
+          credito:creditos_alumna(
+            creditos_restantes,
+            creditos_totales,
+            pack:packs(nombre)
+          )
         `)
         .neq('estado', 'cancelada')
         .order('fecha', { ascending: true })
@@ -125,14 +134,8 @@ const AdminDashboard = () => {
   // Calcular estadísticas en base a datos reales
   const stats = {
     totalBookings: reservas.length,
-    revenue: reservas.filter(r => r.estado === 'pagada').length * 8000,
-    pending: reservas.filter(r => r.estado === 'pendiente').length,
+    activePacks: reservas.filter(r => r.credito?.id).length,
     occupancy: reservas.length > 0 ? Math.round((reservas.length / 42) * 100) : 0 // 7 días * 6 camas = 42 slots semanales
-  };
-
-  const handlePayment = (reserva) => {
-    setSelectedBooking(reserva);
-    setShowPaymentModal(true);
   };
 
   const saveSchedulesToDB = async (usuarioId) => {
@@ -154,43 +157,11 @@ const AdminDashboard = () => {
     }
   };
 
-  const confirmPayment = async () => {
-    try {
-      const { error } = await supabase
-        .from('reservas')
-        .update({ estado: 'pagada' })
-        .eq('id', selectedBooking.id);
-
-      if (error) throw error;
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Pago registrado',
-        text: `${selectedBooking.usuario.nombre} - $8.000`,
-        timer: 1500,
-        showConfirmButton: false,
-        confirmButtonColor: '#10b981'
-      });
-
-      setShowPaymentModal(false);
-      setSelectedBooking(null);
-      fetchReservas(); // Recargar datos
-    } catch (error) {
-      console.error('Error al confirmar pago:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'No se pudo registrar el pago',
-        confirmButtonColor: '#10b981'
-      });
-    }
-  };
-
-  const releaseBooking = async (reservaId) => {
+  const releaseBooking = async (reservaId, reserva) => {
     const result = await Swal.fire({
       icon: 'warning',
-      title: '¿Liberar cupo?',
-      text: 'La cama quedará disponible para otras clientas',
+      title: '¿Liberar este cupo?',
+      text: 'El crédito será devuelto a la alumna',
       showCancelButton: true,
       confirmButtonText: 'Sí, liberar',
       cancelButtonText: 'Cancelar',
@@ -203,6 +174,18 @@ const AdminDashboard = () => {
     if (!result.isConfirmed) return;
 
     try {
+      // Devolver crédito si existe
+      if (reserva.credito_id && reserva.credito?.estado === 'activo') {
+        await supabase
+          .from('creditos_alumna')
+          .update({ 
+            creditos_restantes: (reserva.credito.creditos_restantes || 0) + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', reserva.credito_id);
+      }
+
+      // Eliminar reserva
       const { error } = await supabase
         .from('reservas')
         .delete()
@@ -212,8 +195,8 @@ const AdminDashboard = () => {
       
       Swal.fire({
         icon: 'success',
-        title: 'Cupo liberado',
-        text: 'La cama está disponible nuevamente',
+        title: '¡Cupo liberado!',
+        text: `Crédito devuelto a ${reserva.usuario.nombre}`,
         timer: 1500,
         showConfirmButton: false,
         confirmButtonColor: '#10b981'
@@ -325,22 +308,6 @@ const AdminDashboard = () => {
         confirmButtonColor: '#10b981'
       });
     }
-  };
-
-  const getStatusBadge = (estado) => {
-    const styles = {
-      pagada: 'bg-green-100 text-green-700',
-      pendiente: 'bg-yellow-100 text-yellow-700'
-    };
-    const labels = {
-      pagada: 'Pagado',
-      pendiente: 'Pendiente'
-    };
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${styles[estado]}`}>
-        {labels[estado]}
-      </span>
-    );
   };
 
   // Formatear fecha legible
@@ -584,7 +551,7 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
             <div>
@@ -597,26 +564,14 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
+        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-pink-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-500 text-sm font-medium">Facturado</p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">${stats.revenue.toLocaleString()}</p>
+              <p className="text-gray-500 text-sm font-medium">Créditos en Uso</p>
+              <p className="text-3xl font-bold text-gray-800 mt-2">{stats.activePacks}</p>
             </div>
-            <div className="bg-green-100 p-3 rounded-full">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-yellow-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Pagos Pendientes</p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">{stats.pending}</p>
-            </div>
-            <div className="bg-yellow-100 p-3 rounded-full">
-              <Clock className="w-6 h-6 text-yellow-600" />
+            <div className="bg-pink-100 p-3 rounded-full">
+              <Gift className="w-6 h-6 text-pink-600" />
             </div>
           </div>
         </div>
@@ -635,83 +590,13 @@ const AdminDashboard = () => {
       </div>
 
       {/* Alertas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-yellow-800 mb-1">{stats.pending} Pagos Pendientes</h3>
-            <p className="text-sm text-yellow-700">Recordá confirmar los pagos recibidos</p>
-          </div>
-        </div>
-
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-green-800 mb-1">Sistema Activo</h3>
-            <p className="text-sm text-green-700">Reservas sincronizadas en tiempo real</p>
-          </div>
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3 mb-8">
+        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+        <div>
+          <h3 className="font-semibold text-green-800 mb-1">Sistema de Créditos Activo</h3>
+          <p className="text-sm text-green-700">Reservas sincronizadas en tiempo real con créditos automáticos</p>
         </div>
       </div>
-
-      {/* Modal de Pago */}
-      {showPaymentModal && selectedBooking && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
-            <button 
-              onClick={() => setShowPaymentModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <DollarSign className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Registrar Pago</h3>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Cliente</span>
-                <span className="font-semibold">{selectedBooking.usuario.nombre}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Turno</span>
-                <span className="font-semibold">
-                  {formatFecha(selectedBooking.fecha, selectedBooking.hora)} {selectedBooking.hora.slice(0, 5)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Cama</span>
-                <span className="font-semibold">{selectedBooking.cama.nombre}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                <span className="text-gray-600">Monto</span>
-                <span className="font-bold text-green-600">$8.000</span>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Método de Pago
-              </label>
-              <select className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                <option>Efectivo</option>
-                <option>Transferencia</option>
-                <option>Mercado Pago</option>
-              </select>
-            </div>
-
-            <button
-              onClick={confirmPayment}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
-            >
-              Confirmar Pago
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Modal de Vender Pack */}
       {estudio && selectedAlumna && (
@@ -732,107 +617,45 @@ const AdminDashboard = () => {
 
       {/* Contenido según pestaña activa */}
       {activeTab === 'reservas' && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
-            <button 
-              onClick={() => setShowPaymentModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <DollarSign className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Registrar Pago</h3>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Cliente</span>
-                <span className="font-semibold">{selectedBooking.usuario.nombre}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Turno</span>
-                <span className="font-semibold">
-                  {formatFecha(selectedBooking.fecha, selectedBooking.hora)} {selectedBooking.hora.slice(0, 5)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Cama</span>
-                <span className="font-semibold">{selectedBooking.cama.nombre}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                <span className="text-gray-600">Monto</span>
-                <span className="font-bold text-green-600">$8.000</span>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Método de Pago
-              </label>
-              <select className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                <option>Efectivo</option>
-                <option>Transferencia</option>
-                <option>Mercado Pago</option>
-              </select>
-            </div>
-
-            <button
-              onClick={confirmPayment}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
-            >
-              Confirmar Pago
-            </button>
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-800">Reservas Activas</h2>
           </div>
-        </div>
-      )}
-
-      {/* Tabla de Reservas */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-800">Reservas Activas</h2>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cliente
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Teléfono
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Turno
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cama
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Monto
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Estado
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Acciones
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cliente
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Teléfono
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Turno
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cama
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pack Usado
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
               {reservas.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
                     No hay reservas activas
                   </td>
                 </tr>
               ) : (
                 reservas.map((reserva) => (
-                  <tr key={reserva.id} className={`hover:bg-gray-50 transition-colors ${reserva.estado === 'pagada' ? 'bg-green-50' : ''}`}>
+                  <tr key={reserva.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="font-medium text-gray-900">{reserva.usuario.nombre}</div>
                     </td>
@@ -848,25 +671,22 @@ const AdminDashboard = () => {
                         {reserva.cama.nombre}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      $8.000
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(reserva.estado)}
+                      {reserva.credito ? (
+                        <div className="text-sm">
+                          <div className="font-semibold text-gray-900">{reserva.credito.pack.nombre}</div>
+                          <div className="text-xs text-gray-500">
+                            {reserva.credito.creditos_restantes}/{reserva.credito.creditos_totales} créditos
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500 italic">Sin pack</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex gap-2">
-                        {reserva.estado !== 'pagada' && (
-                          <button
-                            onClick={() => handlePayment(reserva)}
-                            className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            Confirmar Pago
-                          </button>
-                        )}
                         <button
-                          onClick={() => releaseBooking(reserva.id)}
+                          onClick={() => releaseBooking(reserva.id, reserva)}
                           className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
                         >
                           <X className="w-4 h-4" />
