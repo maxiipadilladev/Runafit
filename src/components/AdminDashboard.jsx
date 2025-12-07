@@ -17,7 +17,16 @@ const AdminDashboard = () => {
     dni: '',
     nombre: '',
     telefono: '',
-    estudio_id: ''
+    estudio_id: '',
+    turno: 'mañana',
+    metodo_pago: 'digital'
+  });
+
+  // Estado para horarios mixtos
+  const [schedules, setSchedules] = useState([]);
+  const [newSchedule, setNewSchedule] = useState({
+    dia_semana: 'lunes',
+    hora: '09:00'
   });
 
   // Cargar datos del admin y estudio
@@ -97,6 +106,25 @@ const AdminDashboard = () => {
   const handlePayment = (reserva) => {
     setSelectedBooking(reserva);
     setShowPaymentModal(true);
+  };
+
+  const saveSchedulesToDB = async (usuarioId) => {
+    if (schedules.length === 0) return;
+
+    for (const schedule of schedules) {
+      const { error } = await supabase
+        .from('schedule_alumnas')
+        .insert({
+          usuario_id: usuarioId,
+          dia_semana: schedule.dia_semana,
+          hora: schedule.hora,
+          cama_preferida: null
+        });
+
+      if (error) {
+        console.error('Error guardando horario:', error);
+      }
+    }
   };
 
   const confirmPayment = async () => {
@@ -197,15 +225,18 @@ const AdminDashboard = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data: newUserData, error } = await supabase
         .from('usuarios')
         .insert({
           dni: newUser.dni,
           nombre: newUser.nombre,
           telefono: newUser.telefono,
           rol: 'cliente',
-          estudio_id: parseInt(newUser.estudio_id)
-        });
+          estudio_id: parseInt(newUser.estudio_id),
+          turno: newUser.turno
+        })
+        .select()
+        .single();
 
       if (error) {
         if (error.code === '23505') {
@@ -221,14 +252,26 @@ const AdminDashboard = () => {
         return;
       }
 
+      // Guardar horarios si existen
+      await saveSchedulesToDB(newUserData.id);
+
       Swal.fire({
         icon: 'success',
         title: 'Cliente registrada',
         text: `${newUser.nombre} puede loguearse con su DNI`,
         confirmButtonColor: '#10b981'
       });
-      setNewUser({ dni: '', nombre: '', telefono: '', estudio_id: '' });
+      setNewUser({ 
+        dni: '', 
+        nombre: '', 
+        telefono: '', 
+        estudio_id: newUser.estudio_id,
+        turno: 'mañana',
+        metodo_pago: 'digital'
+      });
+      setSchedules([]);
       setShowUserModal(false);
+      await fetchReservas();
     } catch (error) {
       console.error('Error al crear usuario:', error);
       Swal.fire({
@@ -355,6 +398,88 @@ const AdminDashboard = () => {
                   placeholder="381-5551234"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Turno
+                </label>
+                <select
+                  value={newUser.turno}
+                  onChange={(e) => setNewUser({ ...newUser, turno: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                >
+                  <option value="mañana">Mañana (7:00 - 13:00)</option>
+                  <option value="tarde">Tarde (17:00 - 20:00)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Método de Pago
+                </label>
+                <select
+                  value={newUser.metodo_pago}
+                  onChange={(e) => setNewUser({ ...newUser, metodo_pago: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                >
+                  <option value="digital">Transferencia / Mercado Pago</option>
+                  <option value="efectivo">Efectivo (Confirmar manualmente)</option>
+                </select>
+              </div>
+
+              <div className="border-t-2 border-gray-200 pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Horarios (Días y Horas)</h4>
+                <div className="space-y-2 mb-3">
+                  {schedules.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">Sin horarios agregados aún</p>
+                  ) : (
+                    schedules.map((sch, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-gray-100 p-2 rounded">
+                        <span className="text-sm font-semibold">
+                          {sch.dia_semana.charAt(0).toUpperCase() + sch.dia_semana.slice(1)} - {sch.hora}
+                        </span>
+                        <button
+                          onClick={() => setSchedules(schedules.filter((_, i) => i !== idx))}
+                          className="text-red-600 hover:text-red-800 text-sm font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={newSchedule.dia_semana}
+                    onChange={(e) => setNewSchedule({ ...newSchedule, dia_semana: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="lunes">Lunes</option>
+                    <option value="martes">Martes</option>
+                    <option value="miércoles">Miércoles</option>
+                    <option value="jueves">Jueves</option>
+                    <option value="viernes">Viernes</option>
+                    <option value="sábado">Sábado</option>
+                    <option value="domingo">Domingo</option>
+                  </select>
+                  <input
+                    type="time"
+                    value={newSchedule.hora}
+                    onChange={(e) => setNewSchedule({ ...newSchedule, hora: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!schedules.find(s => s.dia_semana === newSchedule.dia_semana && s.hora === newSchedule.hora)) {
+                        setSchedules([...schedules, newSchedule]);
+                      }
+                    }}
+                    className="px-3 py-2 bg-blue-500 text-white rounded text-sm font-bold hover:bg-blue-600"
+                  >
+                    Agregar
+                  </button>
+                </div>
               </div>
             </div>
 

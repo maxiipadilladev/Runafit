@@ -10,6 +10,7 @@ const ClientBookingView = () => {
   const [todasLasReservas, setTodasLasReservas] = useState([]); // Todas las reservas (incluye otras personas)
   const [usuario, setUsuario] = useState(null);
   const [estudio, setEstudio] = useState(null);
+  const [scheduleAlumna, setScheduleAlumna] = useState([]); // Horarios personalizados de la alumna
   const [loading, setLoading] = useState(true);
 
   // Cargar usuario actual
@@ -19,6 +20,7 @@ const ClientBookingView = () => {
       const user = JSON.parse(userStr);
       setUsuario(user);
       fetchEstudio(user.estudio_id);
+      fetchScheduleAlumna(user.id); // Cargar horarios personalizados
       fetchReservas();
       fetchTodasLasReservas();
     }
@@ -36,6 +38,20 @@ const ClientBookingView = () => {
       setEstudio(data);
     } catch (error) {
       console.error('Error al cargar estudio:', error);
+    }
+  };
+
+  const fetchScheduleAlumna = async (usuarioId) => {
+    try {
+      const { data, error } = await supabase
+        .from('schedule_alumnas')
+        .select('*')
+        .eq('usuario_id', usuarioId);
+
+      if (error) throw error;
+      setScheduleAlumna(data || []);
+    } catch (error) {
+      console.error('Error al cargar horarios personalizados:', error);
     }
   };
 
@@ -111,12 +127,51 @@ const ClientBookingView = () => {
     }
   };
 
-  // Datos mockeados
-  const schedule = [
-    { day: 'Lunes', date: '9 Dic', slots: ['17:00', '19:00', '20:00'] },
-    { day: 'Miércoles', date: '11 Dic', slots: ['17:00', '19:00', '20:00'] },
-    { day: 'Viernes', date: '13 Dic', slots: ['17:00', '19:00', '20:00'] }
-  ];
+  // Generar horarios dinámicos basados en los horarios personalizados de la alumna
+  const generateSchedule = () => {
+    if (scheduleAlumna.length === 0) {
+      // Si no hay horarios personalizados, mostrar horarios por defecto según el turno
+      const defaultSchedule = usuario?.turno === 'mañana' 
+        ? [
+            { day: 'Lunes', date: '9 Dic', slots: ['07:00', '09:00', '11:00'] },
+            { day: 'Miércoles', date: '11 Dic', slots: ['07:00', '09:00', '11:00'] },
+            { day: 'Viernes', date: '13 Dic', slots: ['07:00', '09:00', '11:00'] }
+          ]
+        : [
+            { day: 'Lunes', date: '9 Dic', slots: ['17:00', '19:00', '20:00'] },
+            { day: 'Miércoles', date: '11 Dic', slots: ['17:00', '19:00', '20:00'] },
+            { day: 'Viernes', date: '13 Dic', slots: ['17:00', '19:00', '20:00'] }
+          ];
+      return defaultSchedule;
+    }
+
+    // Construir horarios a partir de los horarios personalizados
+    const diasMap = {
+      'lunes': { day: 'Lunes', date: '9 Dic' },
+      'martes': { day: 'Martes', date: '10 Dic' },
+      'miércoles': { day: 'Miércoles', date: '11 Dic' },
+      'jueves': { day: 'Jueves', date: '12 Dic' },
+      'viernes': { day: 'Viernes', date: '13 Dic' },
+      'sábado': { day: 'Sábado', date: '14 Dic' },
+      'domingo': { day: 'Domingo', date: '15 Dic' }
+    };
+
+    const scheduleByDay = {};
+    scheduleAlumna.forEach(sch => {
+      const dayInfo = diasMap[sch.dia_semana];
+      if (!scheduleByDay[sch.dia_semana]) {
+        scheduleByDay[sch.dia_semana] = { ...dayInfo, slots: [] };
+      }
+      scheduleByDay[sch.dia_semana].slots.push(sch.hora.slice(0, 5));
+    });
+
+    return Object.values(scheduleByDay).sort((a, b) => {
+      const daysOrder = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+      return daysOrder.indexOf(a.day.toLowerCase()) - daysOrder.indexOf(b.day.toLowerCase());
+    });
+  };
+
+  const schedule = generateSchedule();
 
   const beds = [1, 2, 3, 4, 5, 6];
 
