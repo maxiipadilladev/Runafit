@@ -138,7 +138,12 @@ const ClientBookingView = () => {
       .neq('estado', 'cancelada');
 
     if (misReservasEnEseHorario && misReservasEnEseHorario.length > 0) {
-      alert('⚠️ Ya tenés una reserva en este horario. No podés reservar dos camas al mismo tiempo.');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Ya tenés una reserva',
+        text: 'No podés reservar dos camas en el mismo horario',
+        confirmButtonColor: '#a855f7'
+      });
       return;
     }
     
@@ -153,7 +158,12 @@ const ClientBookingView = () => {
     const camaOcupada = reservasExistentes?.some(r => r.cama_id === bed);
     
     if (camaOcupada) {
-      alert('❌ Esa cama ya está reservada por otra persona');
+      Swal.fire({
+        icon: 'error',
+        title: 'Cama ocupada',
+        text: 'Esa cama ya está reservada por otra persona',
+        confirmButtonColor: '#a855f7'
+      });
       return;
     }
     
@@ -389,10 +399,23 @@ const ClientBookingView = () => {
                         return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
                       });
                       
-                      const handleClick = () => {
+                      const handleClick = async () => {
                         if (miReserva && reservaActual) {
                           // Si es mi reserva, preguntar si quiere cancelar
-                          if (confirm(`¿Querés cancelar tu reserva de la Cama ${bed} el ${day.day} ${day.date} a las ${time}?`)) {
+                          const result = await Swal.fire({
+                            icon: 'warning',
+                            title: '¿Querés cancelar tu reserva?',
+                            html: `<p style="font-size: 16px; margin: 10px 0;">de la <strong>Cama ${bed}</strong></p>
+                                   <p style="font-size: 14px; color: #666;">${day.day} ${day.date} a las ${time}hs</p>`,
+                            showCancelButton: true,
+                            confirmButtonText: 'Sí, cancelar',
+                            cancelButtonText: 'No, mantener',
+                            confirmButtonColor: '#a855f7',
+                            cancelButtonColor: '#6b7280',
+                            allowOutsideClick: false,
+                            allowEscapeKey: true
+                          });
+                          if (result.isConfirmed) {
                             cancelBooking(reservaActual.id);
                           }
                         } else if (!ocupada) {
