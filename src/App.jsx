@@ -14,6 +14,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import LandingPage from "./components/LandingPage";
 import LoginView from "./components/LoginView";
 import Swal from "sweetalert2";
+import { InstallPrompt } from "./components/InstallPrompt";
 
 function App() {
   const [currentView, setCurrentView] = useState("login");
@@ -152,6 +153,9 @@ function App() {
 
       {/* Vista Actual */}
       <CurrentComponent />
+
+      {/* Banner Instalar PWA */}
+      <InstallPrompt />
     </div>
   );
 }
