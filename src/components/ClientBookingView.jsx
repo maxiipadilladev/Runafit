@@ -120,6 +120,7 @@ const ClientBookingView = () => {
         cama:camas(nombre)
       `)
       .eq('usuario_id', usuario.id)
+      .neq('estado', 'cancelada')
       .gte('fecha', new Date().toISOString().split('T')[0])
       .order('fecha', { ascending: true });
 
@@ -440,6 +441,7 @@ const ClientBookingView = () => {
       });
       await fetchReservas();
       await fetchTodasLasReservas();
+      await fetchCreditos(usuario.id); // Actualizar créditos en vivo
     }
   };
 
