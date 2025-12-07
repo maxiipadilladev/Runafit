@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, DollarSign, Calendar, TrendingUp, AlertCircle, CheckCircle, Clock, X, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import Swal from 'sweetalert2';
 
 const AdminDashboard = () => {
   const [usuario, setUsuario] = useState(null);
@@ -107,19 +108,42 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
+      Swal.fire({
+        icon: 'success',
+        title: 'Pago registrado',
+        text: `${selectedBooking.usuario.nombre} - $8.000`,
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: '#10b981'
+      });
+
       setShowPaymentModal(false);
       setSelectedBooking(null);
       fetchReservas(); // Recargar datos
     } catch (error) {
       console.error('Error al confirmar pago:', error);
-      alert('Error al registrar el pago');
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo registrar el pago',
+        confirmButtonColor: '#10b981'
+      });
     }
   };
 
   const releaseBooking = async (reservaId) => {
-    if (!confirm('¿Estás segura de liberar este cupo? La cama quedará disponible para otras clientas.')) {
-      return;
-    }
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: '¿Liberar cupo?',
+      text: 'La cama quedará disponible para otras clientas',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, liberar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280'
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
       const { error } = await supabase
@@ -128,21 +152,45 @@ const AdminDashboard = () => {
         .eq('id', reservaId);
 
       if (error) throw error;
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Cupo liberado',
+        text: 'La cama está disponible nuevamente',
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: '#10b981'
+      });
       fetchReservas(); // Recargar datos
     } catch (error) {
       console.error('Error al liberar cupo:', error);
-      alert('Error al eliminar la reserva');
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo liberar el cupo',
+        confirmButtonColor: '#10b981'
+      });
     }
   };
 
   const createNewUser = async () => {
     if (!newUser.dni || !newUser.nombre || !newUser.telefono) {
-      alert('Por favor completá todos los campos');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campos incompletos',
+        text: 'Por favor completá todos los datos',
+        confirmButtonColor: '#10b981'
+      });
       return;
     }
 
     if (newUser.dni.length < 7) {
-      alert('DNI inválido');
+      Swal.fire({
+        icon: 'warning',
+        title: 'DNI inválido',
+        text: 'Debe tener 8 dígitos',
+        confirmButtonColor: '#10b981'
+      });
       return;
     }
 
@@ -159,19 +207,34 @@ const AdminDashboard = () => {
 
       if (error) {
         if (error.code === '23505') {
-          alert('❌ Este DNI ya está registrado');
+          Swal.fire({
+            icon: 'warning',
+            title: 'DNI duplicado',
+            text: 'Este DNI ya está registrado',
+            confirmButtonColor: '#10b981'
+          });
         } else {
           throw error;
         }
         return;
       }
 
-      alert(`✅ Usuario ${newUser.nombre} registrado correctamente`);
-      setNewUser({ dni: '', nombre: '', telefono: '' });
+      Swal.fire({
+        icon: 'success',
+        title: 'Cliente registrada',
+        text: `${newUser.nombre} puede loguearse con su DNI`,
+        confirmButtonColor: '#10b981'
+      });
+      setNewUser({ dni: '', nombre: '', telefono: '', estudio_id: '' });
       setShowUserModal(false);
     } catch (error) {
       console.error('Error al crear usuario:', error);
-      alert('Error al registrar el usuario');
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No se pudo registrar la cliente',
+        confirmButtonColor: '#10b981'
+      });
     }
   };
 

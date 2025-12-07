@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Check, X, Trash2, AlertCircle, CreditCard, Zap, Settings, Plus, Minus, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import Swal from 'sweetalert2';
 
 const ClientBookingView = () => {
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -174,28 +175,50 @@ const ClientBookingView = () => {
 
     if (error) {
       if (error.code === '23505') {
-        alert('❌ Esa cama ya fue reservada por otra persona');
+        Swal.fire({
+          icon: 'error',
+          title: 'Cama ocupada',
+          text: 'Esa cama ya fue reservada por otra persona',
+          confirmButtonColor: '#a855f7'
+        });
       } else {
-        alert('Error al reservar. Intentá de nuevo.');
+        Swal.fire({
+          icon: 'error',
+          title: 'Error al reservar',
+          text: 'Intenta de nuevo más tarde',
+          confirmButtonColor: '#a855f7'
+        });
       }
-      setSelectedSlot(null);
       return;
     }
 
-    setShowConfirmation(true);
+    Swal.fire({
+      icon: 'success',
+      title: '¡Reserva confirmada!',
+      text: `Cama ${selectedSlot.bed} - ${selectedSlot.time}hs`,
+      confirmButtonColor: '#a855f7'
+    });
+
     setSelectedSlot(null);
     
     // Actualizar listas de reservas
     await fetchReservas();
     await fetchTodasLasReservas();
-    
-    setTimeout(() => {
-      setShowConfirmation(false);
-    }, 3000);
   };
 
   const cancelBooking = async (reservaId) => {
-    if (!confirm('¿Querés cancelar este turno?')) return;
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: '¿Cancelar turno?',
+      text: 'Esta acción no se puede deshacer',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cancelar',
+      cancelButtonText: 'No, mantener',
+      confirmButtonColor: '#a855f7',
+      cancelButtonColor: '#6b7280'
+    });
+
+    if (!result.isConfirmed) return;
 
     const { error } = await supabase
       .from('reservas')
@@ -203,7 +226,14 @@ const ClientBookingView = () => {
       .eq('id', reservaId);
 
     if (!error) {
-      alert('Turno cancelado');
+      Swal.fire({
+        icon: 'success',
+        title: 'Turno cancelado',
+        text: 'La cama está disponible nuevamente',
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: '#a855f7'
+      });
       await fetchReservas();
       await fetchTodasLasReservas();
     }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Lock, Mail, LogIn, Zap, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import bcrypt from 'bcryptjs';
+import Swal from 'sweetalert2';
 
 const LoginView = ({ onLogin }) => {
   const [activeTab, setActiveTab] = useState('alumna');
@@ -13,7 +14,12 @@ const LoginView = ({ onLogin }) => {
 
   const handleAlumnaLogin = async () => {
     if (dni.length < 7) {
-      alert('Por favor ingresá un DNI válido');
+      Swal.fire({
+        icon: 'warning',
+        title: 'DNI inválido',
+        text: 'Por favor ingresá un DNI válido (8 dígitos)',
+        confirmButtonColor: '#a855f7'
+      });
       return;
     }
 
@@ -27,7 +33,12 @@ const LoginView = ({ onLogin }) => {
         .single();
 
       if (error || !usuario) {
-        alert('❌ DNI no encontrado. Consultá con el administrador.');
+        Swal.fire({
+          icon: 'error',
+          title: 'DNI no encontrado',
+          text: 'Consultá con el administrador del estudio',
+          confirmButtonColor: '#a855f7'
+        });
         return;
       }
 
@@ -39,11 +50,23 @@ const LoginView = ({ onLogin }) => {
         onLogin(usuario);
       }
       
-      alert(`✅ Bienvenida ${usuario.nombre}!`);
+      Swal.fire({
+        icon: 'success',
+        title: `¡Bienvenida ${usuario.nombre}!`,
+        text: 'Acceso confirmado',
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: '#a855f7'
+      });
       
     } catch (error) {
       console.error('Error login:', error);
-      alert('Error al iniciar sesión. Verificá tu conexión.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Error de conexión',
+        text: 'No pudimos conectar con el servidor',
+        confirmButtonColor: '#a855f7'
+      });
     } finally {
       setLoading(false);
     }
@@ -51,58 +74,95 @@ const LoginView = ({ onLogin }) => {
 
   const handleAdminLogin = async () => {
     if (!email || !password) {
-      alert('Por favor completá todos los campos');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campos incompletos',
+        text: 'Por favor completá usuario y contraseña',
+        confirmButtonColor: '#a855f7'
+      });
       return;
     }
 
     if (password.length < 6) {
-      alert('La contraseña debe tener al menos 6 caracteres');
+      Swal.fire({
+        icon: 'warning',
+        title: 'Contraseña inválida',
+        text: 'La contraseña debe tener al menos 6 caracteres',
+        confirmButtonColor: '#a855f7'
+      });
       return;
     }
 
     setLoading(true);
     try {
-      // Buscar admin por email (usando campo telefono como username)
-      const { data: usuario, error } = await supabase
-        .from('usuarios')
+      // Buscar admin en tabla admins
+      const { data: admin, error } = await supabase
+        .from('admins')
         .select('*')
         .eq('telefono', email)
-        .eq('rol', 'admin')
         .single();
 
-      if (error || !usuario) {
-        alert('❌ Credenciales incorrectas');
+      if (error || !admin) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Credenciales incorrectas',
+          text: 'Usuario o contraseña inválidos',
+          confirmButtonColor: '#a855f7'
+        });
         return;
       }
 
       // Verificar contraseña hasheada
-      if (!usuario.password) {
-        alert('❌ Este usuario no tiene contraseña configurada');
+      if (!admin.password) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error de configuración',
+          text: 'Este usuario no tiene contraseña configurada',
+          confirmButtonColor: '#a855f7'
+        });
         return;
       }
 
-      const passwordMatch = await bcrypt.compare(password, usuario.password);
+      const passwordMatch = await bcrypt.compare(password, admin.password);
       
       if (!passwordMatch) {
-        alert('❌ Contraseña incorrecta');
+        Swal.fire({
+          icon: 'error',
+          title: 'Contraseña incorrecta',
+          text: 'Verificá tu contraseña e intenta de nuevo',
+          confirmButtonColor: '#a855f7'
+        });
         return;
       }
 
       // Login exitoso
-      const usuarioSinPassword = { ...usuario };
-      delete usuarioSinPassword.password; // No guardar password en localStorage
+      const adminSinPassword = { ...admin };
+      delete adminSinPassword.password; // No guardar password en localStorage
+      adminSinPassword.rol = 'admin'; // Agregar rol para compatibilidad
       
-      localStorage.setItem('usuario', JSON.stringify(usuarioSinPassword));
+      localStorage.setItem('usuario', JSON.stringify(adminSinPassword));
       
       if (onLogin) {
-        onLogin(usuarioSinPassword);
+        onLogin(adminSinPassword);
       }
       
-      alert(`✅ Acceso admin autorizado para: ${usuario.nombre}`);
+      Swal.fire({
+        icon: 'success',
+        title: `¡Bienvenida ${admin.nombre}!`,
+        text: 'Acceso admin autorizado',
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: '#a855f7'
+      });
       
     } catch (error) {
       console.error('Error login admin:', error);
-      alert('Error al iniciar sesión');
+      Swal.fire({
+        icon: 'error',
+        title: 'Error de conexión',
+        text: 'No pudimos conectar con el servidor',
+        confirmButtonColor: '#a855f7'
+      });
     } finally {
       setLoading(false);
     }
