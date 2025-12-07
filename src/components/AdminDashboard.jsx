@@ -140,7 +140,9 @@ const AdminDashboard = () => {
       confirmButtonText: 'Sí, liberar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#6b7280'
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false,
+      allowEscapeKey: true
     });
 
     if (!result.isConfirmed) return;

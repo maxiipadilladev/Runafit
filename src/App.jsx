@@ -5,6 +5,7 @@ import ClientBookingView from './components/ClientBookingView';
 import AdminDashboard from './components/AdminDashboard';
 import LandingPage from './components/LandingPage';
 import LoginView from './components/LoginView';
+import Swal from 'sweetalert2';
 
 function App() {
   const [currentView, setCurrentView] = useState('login');
@@ -40,11 +41,31 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    if (confirm('¿Cerrar sesión?')) {
+  const handleLogout = async () => {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: '¿Cerrar sesión?',
+      text: 'Tendrás que volver a loguearte',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cerrar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#a855f7',
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false,
+      allowEscapeKey: true
+    });
+
+    if (result.isConfirmed) {
       localStorage.removeItem('usuario');
       setUsuario(null);
       setCurrentView('login');
+      Swal.fire({
+        icon: 'success',
+        title: 'Sesión cerrada',
+        timer: 1000,
+        showConfirmButton: false,
+        confirmButtonColor: '#a855f7'
+      });
     }
   };
 

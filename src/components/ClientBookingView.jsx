@@ -207,15 +207,26 @@ const ClientBookingView = () => {
   };
 
   const cancelBooking = async (reservaId) => {
+    // Encontrar los detalles de la reserva
+    const reserva = reservas.find(r => r.id === reservaId);
+    if (!reserva) return;
+
+    const fecha = new Date(reserva.fecha + 'T00:00:00');
+    const dia = fecha.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
+    const hora = reserva.hora.slice(0, 5);
+
     const result = await Swal.fire({
       icon: 'warning',
-      title: '¿Cancelar turno?',
-      text: 'Esta acción no se puede deshacer',
+      title: '¿Cancelar reserva?',
+      html: `<p style="font-size: 16px; margin: 10px 0;"><strong>Cama ${reserva.cama_id}</strong></p>
+             <p style="font-size: 14px; color: #666;">${dia.charAt(0).toUpperCase() + dia.slice(1)} a las ${hora}hs</p>`,
       showCancelButton: true,
       confirmButtonText: 'Sí, cancelar',
       cancelButtonText: 'No, mantener',
       confirmButtonColor: '#a855f7',
-      cancelButtonColor: '#6b7280'
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false,
+      allowEscapeKey: true
     });
 
     if (!result.isConfirmed) return;
