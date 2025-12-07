@@ -258,15 +258,38 @@ const ClientBookingView = () => {
     if (!usuario || !selectedSlot) return;
 
     try {
+      // Obtener el credito_id disponible (el más antiguo que esté activo)
+      const { data: creditoDisponible, error: errorCredito } = await supabase
+        .from('creditos_alumna')
+        .select('id')
+        .eq('usuario_id', usuario.id)
+        .eq('estado', 'activo')
+        .lt('fecha_vencimiento', 'now()', { foreignTable: null })
+        .order('fecha_compra', { ascending: true })
+        .limit(1);
+
+      if (errorCredito || !creditoDisponible || creditoDisponible.length === 0) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Sin créditos disponibles',
+          text: 'No hay créditos disponibles para reservar',
+          confirmButtonColor: '#a855f7'
+        });
+        setSelectedSlot(null);
+        return;
+      }
+
+      const creditoId = creditoDisponible[0].id;
+
       // Verificar nuevamente disponibilidad JUSTO antes de insertar (race condition)
-      const { data: verificacionFinal } = await supabase
+      const { data: verificacionFinal, error: errorVerificacion } = await supabase
         .from('reservas')
         .select('cama_id')
         .eq('fecha', selectedSlot.fecha)
         .eq('hora', selectedSlot.time + ':00')
         .eq('cama_id', selectedSlot.bed)
         .neq('estado', 'cancelada')
-        .single();
+        .maybeSingle();
 
       if (verificacionFinal) {
         Swal.fire({
@@ -280,7 +303,7 @@ const ClientBookingView = () => {
         return;
       }
 
-      // El trigger automáticamente asignará el crédito y descontará
+      // Insertar reserva con credito_id
       const { error } = await supabase
         .from('reservas')
         .insert({
@@ -288,6 +311,7 @@ const ClientBookingView = () => {
           fecha: selectedSlot.fecha,
           hora: selectedSlot.time + ':00',
           cama_id: selectedSlot.bed,
+          credito_id: creditoId,
           estado: 'confirmada' // Estado cambiado a confirmada (descuento automático)
         });
 
