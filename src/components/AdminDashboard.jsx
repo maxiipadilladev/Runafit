@@ -277,23 +277,25 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="text-3xl font-black">RUNA</div>
-            <div className="text-3xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
+      <div className="mb-10 bg-white rounded-2xl shadow-lg p-8">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="text-4xl font-black">RUNA</div>
+              <div className="text-4xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
+            </div>
+            {estudio && <h2 className="text-xl font-bold text-purple-600 mb-4">{estudio.nombre}</h2>}
+            <h1 className="text-3xl font-bold text-gray-800 mb-1">Panel de Control</h1>
+            <p className="text-gray-500 text-sm">Dashboard Administrativo</p>
           </div>
-          {estudio && <h2 className="text-lg font-semibold text-gray-700 mb-2">{estudio.nombre}</h2>}
-          <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
-          <p className="text-gray-600">Dashboard Administrativo</p>
+          <button
+            onClick={() => setShowUserModal(true)}
+            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-5 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap ml-6"
+          >
+            <Plus className="w-5 h-5" />
+            Nueva Cliente
+          </button>
         </div>
-        <button
-          onClick={() => setShowUserModal(true)}
-          className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          Nueva Cliente
-        </button>
       </div>
 
       {/* Modal Nuevo Usuario */}
