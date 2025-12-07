@@ -320,31 +320,36 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
-      <div className="mb-10 bg-white rounded-2xl shadow-lg p-8">
-        <div className="flex items-start justify-between mb-6">
+      <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
+        <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-4">
               <div className="text-4xl font-black">RUNA</div>
               <div className="text-4xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">FIT</div>
             </div>
-            {estudio && <h2 className="text-xl font-bold text-purple-600 mb-4">{estudio.nombre}</h2>}
-            <h1 className="text-3xl font-bold text-gray-800 mb-1">Panel de Control</h1>
+            {estudio && <h2 className="text-lg md:text-xl font-bold text-purple-600 mb-4">{estudio.nombre}</h2>}
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1">Panel de Control</h1>
             <p className="text-gray-500 text-sm">Dashboard Administrativo</p>
           </div>
           <button
             onClick={() => setShowUserModal(true)}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-5 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap ml-6"
+            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-2 md:py-3 px-3 md:px-5 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap text-sm md:text-base"
           >
-            <Plus className="w-5 h-5" />
-            Nueva Cliente
+            <Plus className="w-4 md:w-5 h-4 md:h-5" />
+            <span>Nueva Cliente</span>
           </button>
         </div>
       </div>
 
       {/* Modal Nuevo Usuario */}
       {showUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto"
+          onClick={(e) => e.target === e.currentTarget && setShowUserModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowUserModal(false)}
+          tabIndex={0}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 md:p-6 relative my-8">
             <button 
               onClick={() => setShowUserModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -352,14 +357,14 @@ const AdminDashboard = () => {
               <X className="w-6 h-6" />
             </button>
             
-            <div className="text-center mb-6">
+            <div className="text-center mb-4">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Users className="w-8 h-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Registrar Nueva Cliente</h3>
+              <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-2">Registrar Nueva Cliente</h3>
             </div>
 
-            <div className="space-y-4 mb-6">
+            <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   DNI (sin puntos)
@@ -370,7 +375,7 @@ const AdminDashboard = () => {
                   onChange={(e) => setNewUser({ ...newUser, dni: e.target.value.replace(/\D/g, '').slice(0, 8) })}
                   placeholder="12345678"
                   maxLength="8"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
                 />
               </div>
 
@@ -383,7 +388,7 @@ const AdminDashboard = () => {
                   value={newUser.nombre}
                   onChange={(e) => setNewUser({ ...newUser, nombre: e.target.value })}
                   placeholder="María González"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
                 />
               </div>
 
@@ -396,7 +401,7 @@ const AdminDashboard = () => {
                   value={newUser.telefono}
                   onChange={(e) => setNewUser({ ...newUser, telefono: e.target.value })}
                   placeholder="381-5551234"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
                 />
               </div>
 
@@ -407,7 +412,7 @@ const AdminDashboard = () => {
                 <select
                   value={newUser.turno}
                   onChange={(e) => setNewUser({ ...newUser, turno: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
                 >
                   <option value="mañana">Mañana (7:00 - 13:00)</option>
                   <option value="tarde">Tarde (17:00 - 20:00)</option>
@@ -421,27 +426,27 @@ const AdminDashboard = () => {
                 <select
                   value={newUser.metodo_pago}
                   onChange={(e) => setNewUser({ ...newUser, metodo_pago: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none"
+                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
                 >
                   <option value="digital">Transferencia / Mercado Pago</option>
                   <option value="efectivo">Efectivo (Confirmar manualmente)</option>
                 </select>
               </div>
 
-              <div className="border-t-2 border-gray-200 pt-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Horarios (Días y Horas)</h4>
-                <div className="space-y-2 mb-3">
+              <div className="border-t-2 border-gray-200 pt-3">
+                <h4 className="text-xs md:text-sm font-semibold text-gray-700 mb-2">Horarios (Días y Horas)</h4>
+                <div className="space-y-2 mb-2">
                   {schedules.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">Sin horarios agregados aún</p>
+                    <p className="text-xs text-gray-500 italic">Sin horarios agregados aún</p>
                   ) : (
                     schedules.map((sch, idx) => (
                       <div key={idx} className="flex items-center justify-between bg-gray-100 p-2 rounded">
-                        <span className="text-sm font-semibold">
+                        <span className="text-xs md:text-sm font-semibold">
                           {sch.dia_semana.charAt(0).toUpperCase() + sch.dia_semana.slice(1)} - {sch.hora}
                         </span>
                         <button
                           onClick={() => setSchedules(schedules.filter((_, i) => i !== idx))}
-                          className="text-red-600 hover:text-red-800 text-sm font-bold"
+                          className="text-red-600 hover:text-red-800 text-xs font-bold"
                         >
                           ✕
                         </button>
@@ -453,7 +458,7 @@ const AdminDashboard = () => {
                   <select
                     value={newSchedule.dia_semana}
                     onChange={(e) => setNewSchedule({ ...newSchedule, dia_semana: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                    className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
                   >
                     <option value="lunes">Lunes</option>
                     <option value="martes">Martes</option>
@@ -467,7 +472,7 @@ const AdminDashboard = () => {
                     type="time"
                     value={newSchedule.hora}
                     onChange={(e) => setNewSchedule({ ...newSchedule, hora: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                    className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
                   />
                   <button
                     onClick={() => {
@@ -475,7 +480,7 @@ const AdminDashboard = () => {
                         setSchedules([...schedules, newSchedule]);
                       }
                     }}
-                    className="px-3 py-2 bg-blue-500 text-white rounded text-sm font-bold hover:bg-blue-600"
+                    className="px-2 md:px-3 py-2 bg-blue-500 text-white rounded text-xs md:text-sm font-bold hover:bg-blue-600"
                   >
                     Agregar
                   </button>
@@ -483,15 +488,15 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="bg-blue-50 rounded-lg p-3 mb-6 border border-blue-200">
-              <p className="text-sm text-blue-800">
+            <div className="bg-blue-50 rounded-lg p-2 md:p-3 mb-4 border border-blue-200">
+              <p className="text-xs md:text-sm text-blue-800">
                 <span className="font-semibold">Nota:</span> La cliente podrá loguearse con su DNI una vez registrada.
               </p>
             </div>
 
             <button
               onClick={createNewUser}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 md:py-4 rounded-xl transition-colors shadow-lg text-sm md:text-base"
             >
               Registrar Cliente
             </button>
