@@ -175,7 +175,7 @@ const ClientBookingView = () => {
 
   const beds = [1, 2, 3, 4, 5, 6];
 
-  const handleBedClick = async (day, date, time, bed) => {
+  const handleBedClick = async (day, date, time) => {
     // Convertir fecha legible a formato ISO
     const [dayNum, month] = date.split(' ');
     const year = new Date().getFullYear();
@@ -183,7 +183,7 @@ const ClientBookingView = () => {
                        'Jun': 6, 'Jul': 7, 'Ago': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11 }[month] || 12;
     const fechaISO = `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
     
-    // NUEVA VALIDACIÓN: Verificar si el usuario ya tiene una reserva en ese horario
+    // Verificar si el usuario ya tiene una reserva en ese horario
     const { data: misReservasEnEseHorario } = await supabase
       .from('reservas')
       .select('*')
@@ -202,27 +202,28 @@ const ClientBookingView = () => {
       return;
     }
     
-    // Verificar si la cama específica está ocupada
-    const { data: reservasExistentes } = await supabase
+    // Encontrar la primera cama disponible
+    const { data: reservasEnEseHorario } = await supabase
       .from('reservas')
       .select('cama_id')
       .eq('fecha', fechaISO)
       .eq('hora', time + ':00')
       .neq('estado', 'cancelada');
 
-    const camaOcupada = reservasExistentes?.some(r => r.cama_id === bed);
-    
-    if (camaOcupada) {
+    const camasOcupadas = reservasEnEseHorario?.map(r => r.cama_id) || [];
+    const camaDisponible = beds.find(bed => !camasOcupadas.includes(bed));
+
+    if (!camaDisponible) {
       Swal.fire({
         icon: 'error',
-        title: 'Cama ocupada',
-        text: 'Esa cama ya está reservada por otra persona',
+        title: 'Sin camas disponibles',
+        text: 'Todas las camas están ocupadas en este horario',
         confirmButtonColor: '#a855f7'
       });
       return;
     }
     
-    setSelectedSlot({ day, date, time, bed, fecha: fechaISO });
+    setSelectedSlot({ day, date, time, bed: camaDisponible, fecha: fechaISO });
   };
 
   const confirmBooking = async () => {
@@ -391,10 +392,16 @@ const ClientBookingView = () => {
                 <span className="text-gray-600">Horario</span>
                 <span className="font-semibold">{selectedSlot.time}</span>
               </div>
-              <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                <span className="text-gray-600">Cama</span>
-                <span className="font-bold text-purple-600">#{selectedSlot.bed}</span>
+              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                <span className="text-gray-600 font-semibold">Tu Cama</span>
+                <span className="font-bold text-green-600 text-lg">#{selectedSlot.bed}</span>
               </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-blue-800">
+                ✓ Se te asignó automáticamente la Cama #{selectedSlot.bed} para que estés siempre cómoda
+              </p>
             </div>
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
@@ -423,136 +430,61 @@ const ClientBookingView = () => {
             </div>
             
             <div className="p-4 space-y-4">
-              {day.slots.map((time) => (
-                <div key={time}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Clock className="w-4 h-4 text-gray-400" />
-                    <span className="font-semibold text-gray-700">{time}</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-2">
-                    {beds.map((bed) => {
-                      // Convertir fecha a formato ISO para comparar
-                      const [dayNum, month] = day.date.split(' ');
-                      const year = new Date().getFullYear();
-                      const monthNum = { 'Dic': 12, 'Ene': 1, 'Feb': 2, 'Mar': 3, 'Abr': 4, 'May': 5, 
-                                         'Jun': 6, 'Jul': 7, 'Ago': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11 }[month] || 12;
-                      const fechaISO = `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-                      
-                      // Verificar si esta cama está en mis reservas
-                      const miReserva = reservas.some(r => {
-                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
-                      });
-
-                      // Verificar si está ocupada por alguien más
-                      const ocupada = todasLasReservas.some(r => {
-                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
-                      });
-
-                      // Obtener el ID de mi reserva si existe
-                      const reservaActual = reservas.find(r => {
-                        return r.fecha === fechaISO && r.hora.slice(0, 5) === time && r.cama_id === bed;
-                      });
-                      
-                      const handleClick = async () => {
-                        if (miReserva && reservaActual) {
-                          // Si es mi reserva, llamar a cancelBooking que muestra el SweetAlert
-                          cancelBooking(reservaActual.id);
-                        } else if (!ocupada) {
-                          // Si está disponible, hacer reserva
-                          handleBedClick(day.day, day.date, time, bed);
-                        }
-                      };
-                      
-                      return (
-                        <button
-                          key={bed}
-                          onClick={handleClick}
-                          disabled={ocupada && !miReserva}
-                          className={`
-                            p-4 rounded-xl font-bold transition-all text-sm
-                            ${miReserva
-                              ? 'bg-green-500 text-white shadow-lg cursor-pointer hover:bg-green-600'
-                              : ocupada
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-purple-100 text-purple-700 hover:bg-purple-200 hover:shadow-md active:scale-95'
-                            }
-                          `}
-                        >
-                          {miReserva ? (
-                            <div className="flex flex-col items-center gap-1">
-                              <Check className="w-4 h-4" />
-                              <span>Cama {bed}</span>
-                            </div>
-                          ) : ocupada ? (
-                            <div className="flex flex-col items-center gap-1">
-                              <X className="w-4 h-4" />
-                              <span>Cama {bed}</span>
-                            </div>
-                          ) : (
-                            <>Cama {bed}</>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Mis Reservas */}
-      {reservas.length > 0 && (
-        <div className="max-w-md mx-auto mt-6">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              Mis Próximos Turnos ({reservas.length})
-            </h3>
-            <div className="space-y-3">
-              {reservas.map((reserva) => {
-                const fecha = new Date(reserva.fecha + 'T00:00:00');
-                const dia = fecha.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' });
+              {day.slots.map((time) => {
+                // Convertir fecha a formato ISO
+                const [dayNum, month] = day.date.split(' ');
+                const year = new Date().getFullYear();
+                const monthNum = { 'Dic': 12, 'Ene': 1, 'Feb': 2, 'Mar': 3, 'Abr': 4, 'May': 5, 
+                                   'Jun': 6, 'Jul': 7, 'Ago': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11 }[month] || 12;
+                const fechaISO = `${year}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                 
+                // Verificar si tengo una reserva en este horario
+                const miReservaEnEsteHorario = reservas.find(r => {
+                  return r.fecha === fechaISO && r.hora.slice(0, 5) === time;
+                });
+
+                // Contar cuántas camas están ocupadas
+                const camasOcupadas = todasLasReservas.filter(r => {
+                  return r.fecha === fechaISO && r.hora.slice(0, 5) === time;
+                }).length;
+
+                const camasDisponibles = 6 - camasOcupadas;
+
                 return (
-                  <div key={reserva.id} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200 shadow-sm">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Check className="w-5 h-5 text-green-600" />
-                          <p className="font-bold text-gray-800 capitalize">{dia}</p>
-                        </div>
-                        <div className="flex items-center gap-3 text-sm text-gray-700 ml-7">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-4 h-4 text-gray-500" />
-                            <span>{reserva.hora.slice(0, 5)}</span>
-                          </div>
-                          <div className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold text-xs">
-                            Cama #{reserva.cama_id}
-                          </div>
-                          {reserva.estado === 'confirmada' && (
-                            <span className="text-green-600 text-xs font-semibold">✓ Confirmada</span>
-                          )}
-                          {reserva.estado === 'pendiente' && (
-                            <span className="text-yellow-600 text-xs font-semibold">⏳ Pendiente</span>
-                          )}
-                        </div>
+                  <div key={time} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <span className="font-bold text-gray-800">{time}</span>
                       </div>
-                      <button
-                        onClick={() => cancelBooking(reserva.id)}
-                        className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-lg transition-colors ml-3"
-                        title="Cancelar turno"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <p className="text-xs text-gray-500">
+                        {camasOcupadas}/6 camas ocupadas
+                      </p>
                     </div>
-                    {reserva.estado === 'pendiente' && (
-                      <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2 ml-7">
-                        <p className="text-xs text-yellow-800">
-                          💳 Recordá pagar antes del día de la clase
-                        </p>
+                    
+                    {miReservaEnEsteHorario ? (
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="bg-green-100 text-green-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                          <Check className="w-4 h-4" />
+                          Cama #{miReservaEnEsteHorario.cama_id}
+                        </div>
+                        <button
+                          onClick={() => cancelBooking(miReservaEnEsteHorario.id)}
+                          className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : camasDisponibles > 0 ? (
+                      <button
+                        onClick={() => handleBedClick(day.day, day.date, time)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md hover:shadow-lg"
+                      >
+                        Reservar
+                      </button>
+                    ) : (
+                      <div className="bg-gray-200 text-gray-500 px-3 py-2 rounded-lg text-sm font-bold">
+                        Completo
                       </div>
                     )}
                   </div>
@@ -560,37 +492,8 @@ const ClientBookingView = () => {
               })}
             </div>
           </div>
-        </div>
-      )}
-
-      <style>{`
-        @keyframes slide-down {
-          from {
-            transform: translateY(-100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        @keyframes scale-in {
-          from {
-            transform: scale(0.9);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-        .animate-slide-down {
-          animation: slide-down 0.3s ease-out;
-        }
-        .animate-scale-in {
-          animation: scale-in 0.2s ease-out;
-        }
-      `}</style>
+        ))}
+      </div>
     </div>
   );
 };
