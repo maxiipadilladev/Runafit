@@ -258,18 +258,33 @@ const ClientBookingView = () => {
     if (!usuario || !selectedSlot) return;
 
     try {
-      // Obtener el credito_id disponible (el más antiguo que esté activo y con créditos)
-      const { data: creditoDisponible, error: errorCredito } = await supabase
+      // Obtener créditos disponibles (activos, no vencidos, con créditos restantes)
+      const { data: creditosActivos, error: errorCredito } = await supabase
         .from('creditos_alumna')
-        .select('id, creditos_restantes')
-        .eq('usuario_id', usuario.id)
+        .select('id, creditos_restantes, fecha_vencimiento')
+        .eq('alumna_id', usuario.id)
         .eq('estado', 'activo')
-        .gt('creditos_restantes', 0)
-        .gt('fecha_vencimiento', new Date().toISOString())
-        .order('fecha_compra', { ascending: true })
-        .limit(1);
+        .order('fecha_compra', { ascending: true });
 
-      if (errorCredito || !creditoDisponible || creditoDisponible.length === 0) {
+      if (errorCredito) {
+        console.error('Error al obtener créditos:', errorCredito);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'No se pudieron verificar los créditos',
+          confirmButtonColor: '#a855f7'
+        });
+        setSelectedSlot(null);
+        return;
+      }
+
+      // Filtrar créditos válidos en el código
+      const creditoDisponible = creditosActivos?.find(c => 
+        c.creditos_restantes > 0 && 
+        new Date(c.fecha_vencimiento) > new Date()
+      );
+
+      if (!creditoDisponible) {
         Swal.fire({
           icon: 'error',
           title: 'Sin créditos disponibles',
@@ -280,7 +295,7 @@ const ClientBookingView = () => {
         return;
       }
 
-      const creditoId = creditoDisponible[0].id;
+      const creditoId = creditoDisponible.id;
 
       // Verificar nuevamente disponibilidad JUSTO antes de insertar (race condition)
       const { data: verificacionFinal, error: errorVerificacion } = await supabase
@@ -317,6 +332,7 @@ const ClientBookingView = () => {
         });
 
       if (error) {
+        console.error('Error al insertar reserva:', error);
         if (error.code === '23505') {
           Swal.fire({
             icon: 'error',
@@ -328,7 +344,7 @@ const ClientBookingView = () => {
           Swal.fire({
             icon: 'error',
             title: 'Error al reservar',
-            text: 'Intenta de nuevo más tarde',
+            text: error.message || 'Intenta de nuevo más tarde',
             confirmButtonColor: '#a855f7'
           });
         }
