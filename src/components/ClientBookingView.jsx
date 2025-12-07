@@ -356,8 +356,7 @@ const ClientBookingView = () => {
       Swal.fire({
         icon: 'success',
         title: '¡Reserva confirmada!',
-        html: `<p>Cama <strong>${selectedSlot.bed}</strong> - <strong>${selectedSlot.time}hs</strong></p>
-               <p style="font-size: 12px; color: #666; margin-top: 10px;">Se descontó 1 crédito de tu pack</p>`,
+        html: `<p>Cama <strong>${selectedSlot.bed}</strong> - <strong>${selectedSlot.time}hs</strong></p>`,
         confirmButtonColor: '#a855f7'
       });
 
@@ -566,12 +565,6 @@ const ClientBookingView = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
               <p className="text-sm text-blue-800">
                 ✓ Se te asignó automáticamente la Cama #{selectedSlot.bed} para que estés siempre cómoda
-              </p>
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
-              <p className="text-sm text-yellow-800">
-                💳 Recordá pagar antes del {selectedSlot.day} 17hs para confirmar tu turno
               </p>
             </div>
 
