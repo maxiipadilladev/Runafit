@@ -258,13 +258,14 @@ const ClientBookingView = () => {
     if (!usuario || !selectedSlot) return;
 
     try {
-      // Obtener el credito_id disponible (el más antiguo que esté activo)
+      // Obtener el credito_id disponible (el más antiguo que esté activo y con créditos)
       const { data: creditoDisponible, error: errorCredito } = await supabase
         .from('creditos_alumna')
-        .select('id')
+        .select('id, creditos_restantes')
         .eq('usuario_id', usuario.id)
         .eq('estado', 'activo')
-        .lt('fecha_vencimiento', 'now()', { foreignTable: null })
+        .gt('creditos_restantes', 0)
+        .gt('fecha_vencimiento', new Date().toISOString())
         .order('fecha_compra', { ascending: true })
         .limit(1);
 
