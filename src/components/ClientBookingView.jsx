@@ -217,8 +217,8 @@ const ClientBookingView = () => {
 
     const result = await Swal.fire({
       icon: 'warning',
-      title: '¿Cancelar reserva?',
-      html: `<p style="font-size: 16px; margin: 10px 0;"><strong>Cama ${reserva.cama_id}</strong></p>
+      title: '¿Querés cancelar tu reserva?',
+      html: `<p style="font-size: 16px; margin: 10px 0;">de la <strong>Cama ${reserva.cama_id}</strong></p>
              <p style="font-size: 14px; color: #666;">${dia.charAt(0).toUpperCase() + dia.slice(1)} a las ${hora}hs</p>`,
       showCancelButton: true,
       confirmButtonText: 'Sí, cancelar',
