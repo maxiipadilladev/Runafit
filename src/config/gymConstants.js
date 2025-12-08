@@ -2,12 +2,12 @@ export const GYM_CONSTANTS = {
     DIAS_Apertura: ['Lunes', 'Miércoles', 'Viernes'], // Días principales según chat/código previo
     TURNOS: {
         MAÑANA: {
-            label: 'Mañana (07:00 - 13:00)',
-            horarios: ['07:00', '08:00', '09:00', '10:00', '11:00', '12:00']
+            label: 'Mañana (09:00 - 13:00)',
+            horarios: ['09:00', '10:00', '11:00', '12:00']
         },
         TARDE: {
-            label: 'Tarde (17:00 - 21:00)',
-            horarios: ['17:00', '18:00', '19:00', '20:00', '21:00']
+            label: 'Tarde (18:00 - 21:00)',
+            horarios: ['18:00', '19:00', '20:00', '21:00']
         }
     },
     // Todos los horarios válidos combinados para validaciones

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useCreditos } from "../hooks/useCreditos";
+import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 
 const ClientBookingView = () => {
@@ -168,11 +169,9 @@ const ClientBookingView = () => {
 
   // Generar horarios dinámicos basados en los horarios personalizados de la alumna
   const generateSchedule = () => {
-    // 1. Definir la fecha de inicio (ej: hoy o mañana si ya es muy tarde)
     const startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
 
-    // 2. Generar los próximos 7 días con clases habilitadas
     const proximosDias = [];
     const diasSemanaMap = [
       "domingo",
@@ -198,57 +197,36 @@ const ClientBookingView = () => {
       "Dic",
     ];
 
-    for (let i = 0; i < 14; i++) {
-      // Buscar en las próximas 2 semanas para llenar cupos
+    for (let i = 0; i < 7; i++) {
       const fecha = new Date(startDate);
       fecha.setDate(startDate.getDate() + i);
 
-      const diaSemanaIndex = fecha.getDay();
-      const diaSemana = diasSemanaMap[diaSemanaIndex];
-      const diaApertura =
-        diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1);
+      const diaIndex = fecha.getDay();
+      const diaNombre = diasSemanaMap[diaIndex];
+      const diaCapitalizado =
+        diaNombre.charAt(0).toUpperCase() + diaNombre.slice(1);
 
-      // Si tenemos horarios personalizados, filtrar solo esos dias
-      if (scheduleAlumna.length > 0) {
-        const slotsDelDia = scheduleAlumna
-          .filter((s) => s.dia_semana === diaSemana)
-          .map((s) => s.hora.slice(0, 5));
-
-        if (slotsDelDia.length > 0) {
-          proximosDias.push({
-            day: diaApertura,
-            date: `${fecha.getDate()} ${mesesMap[fecha.getMonth()]}`,
-            slots: slotsDelDia.sort(),
-            fullDate: fecha,
-          });
-        }
+      // Filtrar días que no abre el gimnasio (Solo Lun, Mie, Vie según config)
+      if (!GYM_CONSTANTS.DIAS_Apertura.includes(diaCapitalizado)) {
+        continue;
       }
-      // Si no, usar lógica de Turno General (Mañana/Tarde)
-      else {
-        // Solo mostramos días que el gimnasio abre (Lunes, Miércoles, Viernes por defecto o todos según config)
-        // Basándote en el código anterior, parecía abrir Lunes, Miércoles y Viernes.
-        // Pero Vanesa dijo "abierto mañana y tarde en distintos días".
-        // Asumiremos Lunes a Viernes y filtramos por turno.
-        if (diaSemanaIndex === 0) continue; // Saltar Domingos
 
-        // Definir horarios según turno
-        let slots = [];
-        if (usuario?.turno === "mañana") {
-          slots = ["08:00", "09:00", "10:00", "11:00"]; // Default Mañana
-        } else {
-          slots = ["17:00", "18:00", "19:00", "20:00", "21:00"]; // Default Tarde
-        }
-
-        // Simular días de apertura (Lunes, Miércoles, Viernes según el hardcode anterior, ahora lo hacemos L-V general)
-        // Vanesa mencionó "Lunes y viernes... Miércoles...".
-        // Para simplificar y cumplir "horario comercial", habilitamos Lunes a Viernes.
-        proximosDias.push({
-          day: diaApertura,
-          date: `${fecha.getDate()} ${mesesMap[fecha.getMonth()]}`,
-          slots: slots,
-          fullDate: fecha,
-        });
+      // Definir horarios según turno
+      let slots = [];
+      if (usuario?.turno === "mañana") {
+        slots = GYM_CONSTANTS.TURNOS.MAÑANA.horarios;
+      } else if (usuario?.turno === "tarde") {
+        slots = GYM_CONSTANTS.TURNOS.TARDE.horarios;
+      } else {
+        slots = GYM_CONSTANTS.HORARIOS_VALIDOS;
       }
+
+      proximosDias.push({
+        day: diaCapitalizado,
+        date: `${fecha.getDate()} ${mesesMap[fecha.getMonth()]}`,
+        slots: slots,
+        fullDate: fecha,
+      });
 
       if (proximosDias.length >= 7) break; // Mostrar solo una semana "hábil"
     }
@@ -705,7 +683,7 @@ const ClientBookingView = () => {
       <div className="max-w-md mx-auto space-y-4">
         {schedule.map((day) => (
           <div
-            key={day.day}
+            key={`${day.day}-${day.date}`}
             className="bg-white rounded-2xl shadow-lg overflow-hidden"
           >
             <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4">
