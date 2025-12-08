@@ -525,14 +525,15 @@ const AdminDashboard = () => {
                   Turno
                 </label>
                 <select
+                  className="w-full border p-2 rounded-lg"
                   value={newUser.turno}
                   onChange={(e) =>
                     setNewUser({ ...newUser, turno: e.target.value })
                   }
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
+                  disabled={loading}
                 >
-                  <option value="mañana">Mañana (7:00 - 13:00)</option>
-                  <option value="tarde">Tarde (17:00 - 20:00)</option>
+                  <option value="mañana">Mañana (09:00 - 13:00)</option>
+                  <option value="tarde">Tarde (18:00 - 21:00)</option>
                 </select>
               </div>
 
@@ -579,7 +580,11 @@ const AdminDashboard = () => {
                     }
                     className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
                   >
-                    {GYM_CONSTANTS.DIAS_SEMANA.map((day) => (
+                    {GYM_CONSTANTS.DIAS_SEMANA.filter((day) =>
+                      GYM_CONSTANTS.DIAS_Apertura.map((d) =>
+                        d.toLowerCase()
+                      ).includes(day.id.toLowerCase())
+                    ).map((day) => (
                       <option key={day.id} value={day.id}>
                         {day.label}
                       </option>

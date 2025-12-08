@@ -211,15 +211,39 @@ const ClientBookingView = () => {
         continue;
       }
 
-      // Definir horarios según turno
+      // 1. Prioridad: Horarios Específicos (scheduleAlumna)
+      // Si la alumna tiene horarios puntuales asignados, usamos ESOS y solo ESOS.
+      const diaConfig = scheduleAlumna.find(
+        (s) => s.dia_semana.toLowerCase() === diaNombre.toLowerCase()
+      );
+
       let slots = [];
-      if (usuario?.turno === "mañana") {
-        slots = GYM_CONSTANTS.TURNOS.MAÑANA.horarios;
-      } else if (usuario?.turno === "tarde") {
-        slots = GYM_CONSTANTS.TURNOS.TARDE.horarios;
+
+      // 2. Lógica de selección de Slots
+      // Regla de Oro: Si tiene scheduleAlumna (horarios fijos), el turno general (Mañana/Tarde) SE IGNORA.
+      const tieneHorariosFijos = scheduleAlumna.length > 0;
+
+      if (diaConfig) {
+        // Caso A: Tiene horario fijo HOY -> Se muestra solo ese.
+        slots = [diaConfig.hora.slice(0, 5)];
+      } else if (tieneHorariosFijos) {
+        // Caso B: Tiene horario fijo OTRO día, pero HOY no.
+        // Como tiene horarios fijos, NO aplicamos el general. Hoy no se muestra nada.
+        slots = [];
       } else {
-        slots = GYM_CONSTANTS.HORARIOS_VALIDOS;
+        // Caso C: No tiene ningún horario fijo asignado.
+        // Recién acá aplica el "Turno General" (Mañana o Tarde).
+        if (usuario?.turno === "mañana") {
+          slots = GYM_CONSTANTS.TURNOS.MAÑANA.horarios;
+        } else if (usuario?.turno === "tarde") {
+          slots = GYM_CONSTANTS.TURNOS.TARDE.horarios;
+        } else {
+          slots = GYM_CONSTANTS.HORARIOS_VALIDOS;
+        }
       }
+
+      // Si no hay slots para mostrar (ej: Caso B), saltamos el día
+      if (slots.length === 0) continue;
 
       proximosDias.push({
         day: diaCapitalizado,
