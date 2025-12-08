@@ -41,6 +41,11 @@ export const InstallPrompt = () => {
       return () => clearTimeout(timer);
     }
 
+    // Force check for Android if event didn't fire immediately (e.g. dismissed previously)
+    if (!isStandalone && !isIosDevice) {
+      setShowPrompt(true);
+    }
+
     return () => {
       window.removeEventListener(
         "beforeinstallprompt",
@@ -50,14 +55,20 @@ export const InstallPrompt = () => {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-
-    if (outcome === "accepted") {
-      setDeferredPrompt(null);
-      setShowPrompt(false);
+    if (deferredPrompt) {
+      // Caso Ideal: El navegador nos dejó capturar el evento
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") {
+        setDeferredPrompt(null);
+        setShowPrompt(false);
+      }
+    } else {
+      // Caso Fallback: El navegador no disparó el evento (ya instalado o bloqueado)
+      // Mostramos instrucciones manuales para Android
+      alert(
+        "Para instalar: Tocá los 3 puntitos arriba a la derecha (⋮) y elegí 'Instalar aplicación' 📲"
+      );
     }
   };
 
