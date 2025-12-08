@@ -42,11 +42,15 @@ export const InstallPrompt = () => {
     }
 
     // Force check for Android if event didn't fire immediately (e.g. dismissed previously)
-    if (!isStandalone && !isIosDevice) {
-      setShowPrompt(true);
-    }
+    // Wait a bit to see if the native event fires first
+    const timerAndroid = setTimeout(() => {
+      if (!isStandalone && !isIosDevice) {
+        setShowPrompt(true);
+      }
+    }, 2000);
 
     return () => {
+      clearTimeout(timerAndroid);
       window.removeEventListener(
         "beforeinstallprompt",
         handleBeforeInstallPrompt
