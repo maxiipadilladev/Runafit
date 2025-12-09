@@ -637,14 +637,27 @@ const AdminDashboard = () => {
                                 </p>
                               </div>
                             </div>
-                            <button
-                              onClick={() =>
-                                releaseBooking(reserva.id, reserva)
-                              }
-                              className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold border border-red-100"
-                            >
-                              Liberar
-                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() =>
+                                  handleWhatsApp(
+                                    reserva.usuario.telefono,
+                                    `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
+                                  )
+                                }
+                                className="bg-green-50 text-green-600 p-2 rounded-lg border border-green-100 hover:bg-green-100 transition-colors"
+                              >
+                                <MessageCircle className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  releaseBooking(reserva.id, reserva)
+                                }
+                                className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold border border-red-100 hover:bg-red-100 transition-colors"
+                              >
+                                Liberar
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </td>
