@@ -525,62 +525,86 @@ const ClientBookingView = () => {
 
     if (!result.isConfirmed) return;
 
-    // 1. Devolver crédito manualmente si corresponde
-    if (reserva.credito_id && reserva.credito) {
-      // Verificar si el crédito sigue activo o si es válido devolverlo
-      // (Aquí asumimos que si está cancelando es porque puede, así que devolvemos)
-      try {
-        const { error: refundError } = await supabase.rpc(
-          "increment_creditos",
-          { row_id: reserva.credito_id }
-        );
-
-        // Si no existe la función RPC, hacemos el método clásico (lectura+escritura)
-        if (refundError) {
-          const { data: currentCredit } = await supabase
-            .from("creditos_alumna")
-            .select("creditos_restantes")
-            .eq("id", reserva.credito_id)
-            .single();
-
-          if (currentCredit) {
-            await supabase
-              .from("creditos_alumna")
-              .update({
-                creditos_restantes: currentCredit.creditos_restantes + 1,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", reserva.credito_id);
-          }
-        }
-      } catch (err) {
-        console.error("Error al devolver crédito:", err);
-        // No bloqueamos la cancelación, pero logueamos el error
-      }
+    // 1. Obtener estado actual del crédito (para comparar después)
+    let creditBefore = null;
+    if (reserva.credito_id) {
+      const { data } = await supabase
+        .from("creditos_alumna")
+        .select("creditos_restantes")
+        .eq("id", reserva.credito_id)
+        .single();
+      creditBefore = data ? data.creditos_restantes : 0;
     }
 
-    // 2. Cambiar estado a 'cancelada'
+    // 2. Cambiar estado a 'cancelada' (Esto dispara el Trigger si corresponde)
     const { error } = await supabase
       .from("reservas")
       .update({ estado: "cancelada" })
       .eq("id", reservaId);
 
-    if (!error) {
-      Swal.fire({
-        icon: "success",
-        title: "Turno cancelado",
-        text: "La cama está disponible nuevamente y tu crédito fue devuelto",
-        timer: 1500,
-        showConfirmButton: false,
-        confirmButtonColor: "#a855f7",
-      });
-      // Esperar un poco antes de refrescar para asegurar que el trigger ejecutó
-      setTimeout(async () => {
-        await fetchReservas();
-        await fetchTodasLasReservas();
-        if (usuario) fetchCreditos(usuario.id); // Actualizar créditos en vivo
-      }, 500);
+    if (error) {
+      // Manejar error de cancelación
+      return;
     }
+
+    // 3. Verificación Inteligente: ¿El trigger devolvió el crédito?
+    if (reserva.credito_id && creditBefore !== null) {
+      // Esperamos un momento para que el trigger DB termine
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const { data: creditAfterData } = await supabase
+        .from("creditos_alumna")
+        .select("creditos_restantes")
+        .eq("id", reserva.credito_id)
+        .single();
+
+      const creditAfter = creditAfterData
+        ? creditAfterData.creditos_restantes
+        : 0;
+
+      // Si el saldo NO cambió (Trigger falló o no aplicó), devolvemos manualmente
+      if (creditAfter === creditBefore) {
+        console.log("Trigger no aplicó. Devolviendo crédito manualmente...");
+        try {
+          // Intento seguro con RPC
+          const { error: rpcError } = await supabase.rpc("increment_creditos", {
+            row_id: reserva.credito_id,
+          });
+
+          // Fallback manual si no hay RPC
+          if (rpcError) {
+            await supabase
+              .from("creditos_alumna")
+              .update({
+                creditos_restantes: creditBefore + 1,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", reserva.credito_id);
+          }
+        } catch (err) {
+          console.error("Error manual refund:", err);
+        }
+      } else {
+        console.log("Trigger funcionó correctamente. Saldo actualizado.");
+      }
+    }
+
+    // 4. Feedback al usuario
+    Swal.fire({
+      icon: "success",
+      title: "Turno cancelado",
+      text: "La cama está disponible nuevamente y tu crédito fue devuelto",
+      timer: 1500,
+      showConfirmButton: false,
+      confirmButtonColor: "#a855f7",
+    });
+
+    // Actualizar UI
+    setTimeout(async () => {
+      await fetchReservas();
+      await fetchTodasLasReservas();
+      if (usuario) fetchCreditos(usuario.id);
+    }, 500);
   };
 
   if (loading) {
