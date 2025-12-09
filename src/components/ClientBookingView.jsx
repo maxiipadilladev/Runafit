@@ -143,7 +143,8 @@ const ClientBookingView = () => {
       .select(
         `
         *,
-        cama:camas(nombre)
+        cama:camas(nombre),
+        credito:creditos_alumna(*)
       `
       )
       .eq("usuario_id", usuario.id)
@@ -524,7 +525,41 @@ const ClientBookingView = () => {
 
     if (!result.isConfirmed) return;
 
-    // Cambiar estado a 'cancelada' en vez de eliminar (trigger devolverá el crédito)
+    // 1. Devolver crédito manualmente si corresponde
+    if (reserva.credito_id && reserva.credito) {
+      // Verificar si el crédito sigue activo o si es válido devolverlo
+      // (Aquí asumimos que si está cancelando es porque puede, así que devolvemos)
+      try {
+        const { error: refundError } = await supabase.rpc(
+          "increment_creditos",
+          { row_id: reserva.credito_id }
+        );
+
+        // Si no existe la función RPC, hacemos el método clásico (lectura+escritura)
+        if (refundError) {
+          const { data: currentCredit } = await supabase
+            .from("creditos_alumna")
+            .select("creditos_restantes")
+            .eq("id", reserva.credito_id)
+            .single();
+
+          if (currentCredit) {
+            await supabase
+              .from("creditos_alumna")
+              .update({
+                creditos_restantes: currentCredit.creditos_restantes + 1,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", reserva.credito_id);
+          }
+        }
+      } catch (err) {
+        console.error("Error al devolver crédito:", err);
+        // No bloqueamos la cancelación, pero logueamos el error
+      }
+    }
+
+    // 2. Cambiar estado a 'cancelada'
     const { error } = await supabase
       .from("reservas")
       .update({ estado: "cancelada" })
@@ -543,7 +578,7 @@ const ClientBookingView = () => {
       setTimeout(async () => {
         await fetchReservas();
         await fetchTodasLasReservas();
-        await fetchCreditos(usuario.id); // Actualizar créditos en vivo
+        if (usuario) fetchCreditos(usuario.id); // Actualizar créditos en vivo
       }, 500);
     }
   };
