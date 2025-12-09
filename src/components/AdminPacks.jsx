@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X } from 'lucide-react';
-import { useCreditos } from '../hooks/useCreditos';
-import Swal from 'sweetalert2';
+import { useState, useEffect } from "react";
+import { Plus, Edit2, Trash2, Check, X } from "lucide-react";
+import { useCreditos } from "../hooks/useCreditos";
+import Swal from "sweetalert2";
 
 export const AdminPacks = ({ estudio }) => {
   const [packs, setPacks] = useState([]);
@@ -9,10 +9,10 @@ export const AdminPacks = ({ estudio }) => {
   const [showModal, setShowModal] = useState(false);
   const [editingPack, setEditingPack] = useState(null);
   const [formData, setFormData] = useState({
-    nombre: '',
-    cantidad_clases: '',
-    precio: '',
-    duracion_dias: 30
+    nombre: "",
+    cantidad_clases: "",
+    precio: "",
+    duracion_dias: 30,
   });
 
   const { getPacks, crearPack, actualizarPack, desactivarPack } = useCreditos();
@@ -36,15 +36,15 @@ export const AdminPacks = ({ estudio }) => {
         nombre: pack.nombre,
         cantidad_clases: pack.cantidad_clases,
         precio: pack.precio,
-        duracion_dias: pack.duracion_dias
+        duracion_dias: pack.duracion_dias,
       });
     } else {
       setEditingPack(null);
       setFormData({
-        nombre: '',
-        cantidad_clases: '',
-        precio: '',
-        duracion_dias: 30
+        nombre: "",
+        cantidad_clases: "",
+        precio: "",
+        duracion_dias: 30,
       });
     }
     setShowModal(true);
@@ -60,10 +60,10 @@ export const AdminPacks = ({ estudio }) => {
 
     if (!formData.nombre || !formData.cantidad_clases || !formData.precio) {
       Swal.fire({
-        icon: 'warning',
-        title: 'Campos incompletos',
-        text: 'Completa todos los campos',
-        confirmButtonColor: '#10b981'
+        icon: "warning",
+        title: "Campos incompletos",
+        text: "Completa todos los campos",
+        confirmButtonColor: "#10b981",
       });
       return;
     }
@@ -74,7 +74,7 @@ export const AdminPacks = ({ estudio }) => {
         nombre: formData.nombre,
         cantidad_clases: parseInt(formData.cantidad_clases),
         precio: parseFloat(formData.precio),
-        duracion_dias: parseInt(formData.duracion_dias)
+        duracion_dias: parseInt(formData.duracion_dias),
       });
     } else {
       // Crear pack
@@ -82,7 +82,7 @@ export const AdminPacks = ({ estudio }) => {
         nombre: formData.nombre,
         cantidad_clases: parseInt(formData.cantidad_clases),
         precio: parseFloat(formData.precio),
-        duracion_dias: parseInt(formData.duracion_dias)
+        duracion_dias: parseInt(formData.duracion_dias),
       });
     }
 
@@ -98,7 +98,9 @@ export const AdminPacks = ({ estudio }) => {
   };
 
   if (loading) {
-    return <div className="text-center py-8 text-gray-400">Cargando packs...</div>;
+    return (
+      <div className="text-center py-8 text-gray-400">Cargando packs...</div>
+    );
   }
 
   return (
@@ -128,27 +130,38 @@ export const AdminPacks = ({ estudio }) => {
                 <th className="text-left py-3 px-4 font-semibold">Nombre</th>
                 <th className="text-center py-3 px-4 font-semibold">Clases</th>
                 <th className="text-right py-3 px-4 font-semibold">Precio</th>
-                <th className="text-center py-3 px-4 font-semibold">Vigencia</th>
+                <th className="text-center py-3 px-4 font-semibold">
+                  Vigencia
+                </th>
                 <th className="text-center py-3 px-4 font-semibold">Estado</th>
                 <th className="text-right py-3 px-4 font-semibold">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {packs.map((pack) => (
-                <tr key={pack.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                <tr
+                  key={pack.id}
+                  className="border-b border-gray-700 hover:bg-gray-700/50"
+                >
                   <td className="py-3 px-4">{pack.nombre}</td>
-                  <td className="text-center py-3 px-4">{pack.cantidad_clases}</td>
+                  <td className="text-center py-3 px-4">
+                    {pack.cantidad_clases}
+                  </td>
                   <td className="text-right py-3 px-4 font-semibold text-green-400">
-                    ${pack.precio.toLocaleString('es-AR')}
+                    ${pack.precio.toLocaleString("es-AR")}
                   </td>
                   <td className="text-center py-3 px-4 text-xs text-gray-400">
                     {pack.duracion_dias} días
                   </td>
                   <td className="text-center py-3 px-4">
                     {pack.activo ? (
-                      <span className="text-green-400 text-xs font-semibold">ACTIVO</span>
+                      <span className="text-green-400 text-xs font-semibold">
+                        ACTIVO
+                      </span>
                     ) : (
-                      <span className="text-red-400 text-xs font-semibold">INACTIVO</span>
+                      <span className="text-red-400 text-xs font-semibold">
+                        INACTIVO
+                      </span>
                     )}
                   </td>
                   <td className="text-right py-3 px-4 space-x-2">
@@ -181,7 +194,7 @@ export const AdminPacks = ({ estudio }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
             <h3 className="text-xl font-bold text-white mb-6">
-              {editingPack ? 'Editar Pack' : 'Crear nuevo Pack'}
+              {editingPack ? "Editar Pack" : "Crear nuevo Pack"}
             </h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -193,7 +206,9 @@ export const AdminPacks = ({ estudio }) => {
                 <input
                   type="text"
                   value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, nombre: e.target.value })
+                  }
                   placeholder="ej: Pack 8 clases"
                   className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 outline-none"
                 />
@@ -208,7 +223,12 @@ export const AdminPacks = ({ estudio }) => {
                   <input
                     type="number"
                     value={formData.cantidad_clases}
-                    onChange={(e) => setFormData({ ...formData, cantidad_clases: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        cantidad_clases: e.target.value,
+                      })
+                    }
                     placeholder="8"
                     min="1"
                     className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 outline-none"
@@ -223,7 +243,12 @@ export const AdminPacks = ({ estudio }) => {
                   <input
                     type="number"
                     value={formData.duracion_dias}
-                    onChange={(e) => setFormData({ ...formData, duracion_dias: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        duracion_dias: e.target.value,
+                      })
+                    }
                     placeholder="30"
                     min="1"
                     className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 outline-none"
@@ -239,10 +264,12 @@ export const AdminPacks = ({ estudio }) => {
                 <input
                   type="number"
                   value={formData.precio}
-                  onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, precio: e.target.value })
+                  }
                   placeholder="25000"
                   min="1"
-                  step="1000"
+                  step="0.01"
                   className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 outline-none"
                 />
               </div>
@@ -253,7 +280,7 @@ export const AdminPacks = ({ estudio }) => {
                   type="submit"
                   className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-semibold transition"
                 >
-                  {editingPack ? 'Actualizar' : 'Crear'}
+                  {editingPack ? "Actualizar" : "Crear"}
                 </button>
                 <button
                   type="button"

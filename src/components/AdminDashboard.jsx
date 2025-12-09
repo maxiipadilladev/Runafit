@@ -8,13 +8,16 @@ import {
   CheckCircle,
   Clock,
   X,
+  Package,
+  MessageCircle,
+  CreditCard,
   Plus,
-  Gift,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { AdminPacks } from "./AdminPacks";
 import { VenderPackModal } from "./VenderPackModal";
 import { useCreditos } from "../hooks/useCreditos";
+import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 
 const AdminDashboard = () => {
@@ -27,7 +30,7 @@ const AdminDashboard = () => {
   const [alumnas, setAlumnas] = useState([]);
   const [ventas, setVentas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("reservas"); // 'reservas' | 'alumnas' | 'packs' | 'caja'
+  const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'users' | 'packs'
   const { getTodosCreditosAlumna } = useCreditos();
 
   // Estado para formulario de nuevo usuario
@@ -37,14 +40,13 @@ const AdminDashboard = () => {
     telefono: "",
     estudio_id: "",
     turno: "mañana",
-    metodo_pago: "digital",
   });
 
   // Estado para horarios mixtos
   const [schedules, setSchedules] = useState([]);
   const [newSchedule, setNewSchedule] = useState({
     dia_semana: "lunes",
-    hora: "09:00",
+    hora: "08:00",
   });
 
   // Cargar datos del admin y estudio
@@ -56,7 +58,7 @@ const AdminDashboard = () => {
       fetchEstudio(user.estudio_id);
     }
     fetchReservas();
-    fetchVentas(); // Cargar historial de ventas
+    fetchKPIs();
 
     // Suscripción a cambios en tiempo real
     const channel = supabase
@@ -66,12 +68,26 @@ const AdminDashboard = () => {
         { event: "*", schema: "public", table: "reservas" },
         () => {
           fetchReservas();
+          fetchKPIs();
+        }
+      )
+      .subscribe();
+
+    // Suscripción a cambios en usuarios (alumnas)
+    const channelAlumnas = supabase
+      .channel("admin-alumnas")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "usuarios" },
+        () => {
+          fetchAlumnas();
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(channelAlumnas);
     };
   }, []);
 
@@ -106,37 +122,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchVentas = async () => {
-    try {
-      if (!usuario?.estudio_id) return;
-
-      // Obtener créditos (packs vendidos) unidos con usuarios y packs
-      // Filtramos por el estudio del usuarios
-
-      // Nota: creditos_alumna no tiene estudio_id directo, se infiere por el usuario.
-      // Supabase limita los joins profundos.
-      // Lo ideal seria filtrar por usuario.estudio_id pero aquí traemos todo y filtramos en JS si es necesario
-      // O asumimos RLS. Vamos a traer todo con los joins.
-
-      const { data, error } = await supabase
-        .from("creditos_alumna")
-        .select(
-          `
-          *,
-          usuario:usuarios!inner(nombre, estudio_id),
-          pack:packs(nombre)
-        `
-        )
-        .eq("usuario.estudio_id", usuario.estudio_id)
-        .order("fecha_compra", { ascending: false });
-
-      if (error) throw error;
-      setVentas(data || []);
-    } catch (error) {
-      console.error("Error cargando ventas:", error);
-    }
-  };
-
   const fetchReservas = async () => {
     try {
       const { data, error } = await supabase
@@ -167,6 +152,66 @@ const AdminDashboard = () => {
     }
   };
 
+  const [kpis, setKpis] = useState({
+    recaudacion: 0,
+    vencimientos: 0,
+    ocupacionHoy: 0,
+  });
+
+  const fetchKPIs = async () => {
+    try {
+      // 1. Recaudación Mes Actual (suma de packs vendidos)
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const { data: packsVendidos } = await supabase
+        .from("creditos_alumna")
+        .select("monto_pagado")
+        .gte("created_at", startOfMonth.toISOString());
+
+      const recaudacion =
+        packsVendidos?.reduce(
+          (acc, curr) => acc + (curr.monto_pagado || 0),
+          0
+        ) || 0;
+
+      // 2. Vencimientos Próximos (prox 7 días)
+      const today = new Date();
+      const nextWeek = new Date();
+      nextWeek.setDate(today.getDate() + 7);
+
+      const { count: vencimientos } = await supabase
+        .from("creditos_alumna")
+        .select("*", { count: "exact", head: true })
+        .eq("estado", "activo")
+        .gte("fecha_vencimiento", today.toISOString())
+        .lte("fecha_vencimiento", nextWeek.toISOString());
+
+      // 3. Ocupación HOY
+      const todayStr = today.toISOString().split("T")[0];
+      const { count: reservasHoy } = await supabase
+        .from("reservas")
+        .select("*", { count: "exact", head: true })
+        .eq("fecha", todayStr)
+        .neq("estado", "cancelada");
+
+      // Asumimos 36 slots diarios aprox
+      const slotsDiarios = 36;
+      const ocupacion = reservasHoy
+        ? Math.round((reservasHoy / slotsDiarios) * 100)
+        : 0;
+
+      setKpis({
+        recaudacion,
+        vencimientos: vencimientos || 0,
+        ocupacionHoy: ocupacion,
+      });
+    } catch (error) {
+      console.error("Error fetching KPIs:", error);
+    }
+  };
+
   const fetchAlumnas = async () => {
     try {
       if (!usuario) return;
@@ -183,14 +228,6 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error("Error al cargar alumnas:", error);
     }
-  };
-
-  // Calcular estadísticas en base a datos reales
-  const stats = {
-    totalBookings: reservas.length,
-    activePacks: reservas.filter((r) => r.credito?.id).length,
-    occupancy:
-      reservas.length > 0 ? Math.round((reservas.length / 42) * 100) : 0, // 7 días * 6 camas = 42 slots semanales
   };
 
   const saveSchedulesToDB = async (usuarioId) => {
@@ -264,6 +301,16 @@ const AdminDashboard = () => {
         confirmButtonColor: "#10b981",
       });
     }
+  };
+
+  const handleWhatsApp = (telefono, mensaje) => {
+    if (!telefono) return;
+    // Limpiar teléfono (sacar 0, 15, guiones, etc si fuera necesario, o asumir formato correcto)
+    // Asumimos que guardan "381..."
+    const url = `https://wa.me/549${telefono}?text=${encodeURIComponent(
+      mensaje
+    )}`;
+    window.open(url, "_blank");
   };
 
   const createNewUser = async () => {
@@ -347,11 +394,11 @@ const AdminDashboard = () => {
         telefono: "",
         estudio_id: newUser.estudio_id,
         turno: "mañana",
-        metodo_pago: "digital",
       });
       setSchedules([]);
       setShowUserModal(false);
       await fetchReservas();
+      await fetchAlumnas();
     } catch (error) {
       console.error("Error al crear usuario:", error);
       Swal.fire({
@@ -387,67 +434,19 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
       <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
-        <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6 mb-6">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="text-4xl font-black">RUNA</div>
-              <div className="text-4xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-                FIT
-              </div>
-            </div>
-            {estudio && (
-              <h2 className="text-lg md:text-xl font-bold text-purple-600 mb-4">
-                {estudio.nombre}
-              </h2>
-            )}
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">
               Panel de Control
             </h1>
-            <p className="text-gray-500 text-sm">Dashboard Administrativo</p>
+            <p className="text-sm text-gray-500">Gestión administrativa</p>
           </div>
           <button
             onClick={() => setShowUserModal(true)}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-2 md:py-3 px-3 md:px-5 rounded-xl transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap text-sm md:text-base"
+            className="w-full md:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"
           >
-            <Plus className="w-4 md:w-5 h-4 md:h-5" />
-            <span>Nueva Cliente</span>
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab("reservas")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "reservas"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Calendar className="inline mr-2 w-4 h-4" />
-            Reservas
-          </button>
-          <button
-            onClick={() => setActiveTab("alumnas")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "alumnas"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Users className="inline mr-2 w-4 h-4" />
-            Alumnas
-          </button>
-          <button
-            onClick={() => setActiveTab("packs")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "packs"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <Gift className="inline mr-2 w-4 h-4" />
-            Packs
+            <Plus className="w-5 h-5" />
+            Nueva Cliente
           </button>
           <button
             onClick={() => setActiveTab("caja")}
@@ -545,32 +544,15 @@ const AdminDashboard = () => {
                   Turno
                 </label>
                 <select
+                  className="w-full border p-2 rounded-lg"
                   value={newUser.turno}
                   onChange={(e) =>
                     setNewUser({ ...newUser, turno: e.target.value })
                   }
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
+                  disabled={loading}
                 >
-                  <option value="mañana">Mañana (7:00 - 13:00)</option>
-                  <option value="tarde">Tarde (17:00 - 20:00)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Método de Pago
-                </label>
-                <select
-                  value={newUser.metodo_pago}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, metodo_pago: e.target.value })
-                  }
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
-                >
-                  <option value="digital">Transferencia / Mercado Pago</option>
-                  <option value="efectivo">
-                    Efectivo (Confirmar manualmente)
-                  </option>
+                  <option value="mañana">Mañana (09:00 - 13:00)</option>
+                  <option value="tarde">Tarde (18:00 - 21:00)</option>
                 </select>
               </div>
 
@@ -617,22 +599,29 @@ const AdminDashboard = () => {
                     }
                     className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
                   >
-                    <option value="lunes">Lunes</option>
-                    <option value="martes">Martes</option>
-                    <option value="miércoles">Miércoles</option>
-                    <option value="jueves">Jueves</option>
-                    <option value="viernes">Viernes</option>
-                    <option value="sábado">Sábado</option>
-                    <option value="domingo">Domingo</option>
+                    {GYM_CONSTANTS.DIAS_SEMANA.filter((day) =>
+                      GYM_CONSTANTS.DIAS_Apertura.map((d) =>
+                        d.toLowerCase()
+                      ).includes(day.id.toLowerCase())
+                    ).map((day) => (
+                      <option key={day.id} value={day.id}>
+                        {day.label}
+                      </option>
+                    ))}
                   </select>
-                  <input
-                    type="time"
+                  <select
                     value={newSchedule.hora}
                     onChange={(e) =>
                       setNewSchedule({ ...newSchedule, hora: e.target.value })
                     }
                     className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
-                  />
+                  >
+                    {GYM_CONSTANTS.HORARIOS_VALIDOS.map((hora) => (
+                      <option key={hora} value={hora}>
+                        {hora}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => {
                       if (
@@ -669,50 +658,57 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">
-                Turnos Activos
-              </p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
-                {stats.totalBookings}
-              </p>
-            </div>
-            <div className="bg-purple-100 p-3 rounded-full">
-              <Calendar className="w-6 h-6 text-purple-600" />
-            </div>
+      {/* KPIs Section - Scroll Horizontal en Mobile */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* Card Turnos */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Turnos Activos
+            </p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">
+              {reservas.length}
+            </p>
+          </div>
+          <div className="bg-purple-50 p-2.5 rounded-lg">
+            <Calendar className="w-5 h-5 text-purple-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-pink-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">
-                Créditos en Uso
-              </p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
-                {stats.activePacks}
-              </p>
-            </div>
-            <div className="bg-pink-100 p-3 rounded-full">
-              <Gift className="w-6 h-6 text-pink-600" />
-            </div>
+        {/* Card Caja */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Caja Mensual
+            </p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">
+              ${kpis.recaudacion.toLocaleString("es-AR")}
+            </p>
+          </div>
+          <div className="bg-green-50 p-2.5 rounded-lg">
+            <DollarSign className="w-5 h-5 text-green-600" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Ocupación</p>
-              <p className="text-3xl font-bold text-gray-800 mt-2">
-                {stats.occupancy}%
+        {/* Card Vencimientos */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Vencimientos (7d)
+            </p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold text-gray-800 mt-1">
+                {kpis.vencimientos}
               </p>
+              {kpis.vencimientos > 0 && (
+                <span className="text-xs text-red-500 font-medium">
+                  Atención
+                </span>
+              )}
             </div>
-            <div className="bg-blue-100 p-3 rounded-full">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
-            </div>
+          </div>
+          <div className="bg-red-50 p-2.5 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-red-600" />
           </div>
         </div>
       </div>
@@ -747,8 +743,47 @@ const AdminDashboard = () => {
         />
       )}
 
+      {/* Tabs Menu - Debajo de los contadores */}
+      <div className="flex overflow-x-auto gap-2 pb-4 mb-2 no-scrollbar">
+        <button
+          onClick={() => setActiveTab("bookings")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "bookings"
+              ? "bg-indigo-600 text-white shadow-md relative"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Calendar className="inline mr-2 w-4 h-4" />
+          Reservas
+        </button>
+
+        <button
+          onClick={() => setActiveTab("users")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "users"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Users className="inline mr-2 w-4 h-4" />
+          Alumnas
+        </button>
+
+        <button
+          onClick={() => setActiveTab("packs")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "packs"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Package className="inline mr-2 w-4 h-4" />
+          Packs
+        </button>
+      </div>
+
       {/* Contenido según pestaña activa */}
-      {activeTab === "reservas" && (
+      {activeTab === "bookings" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800">
@@ -763,17 +798,17 @@ const AdminDashboard = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Cliente
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Teléfono
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Turno
+                    Fecha/Hora
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cama
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    Actividad
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pack Usado
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    Estado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -785,23 +820,33 @@ const AdminDashboard = () => {
                   <tr>
                     <td
                       colSpan="6"
-                      className="px-6 py-8 text-center text-gray-500"
+                      className="px-6 py-4 text-center text-gray-500"
                     >
-                      No hay reservas activas
+                      No hay reservas activas hoy
                     </td>
                   </tr>
                 ) : (
                   reservas.map((reserva) => (
-                    <tr
-                      key={reserva.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
+                    <tr key={reserva.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-medium text-gray-900">
-                          {reserva.usuario.nombre}
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                              {reserva.usuario.nombre.charAt(0)}
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {reserva.usuario.nombre}
+                            </div>
+                            {/* Mostrar teléfono solo en móvil debajo del nombre */}
+                            <div className="text-xs text-gray-500 md:hidden">
+                              {reserva.usuario.telefono}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
                         {reserva.usuario.telefono}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -809,33 +854,37 @@ const AdminDashboard = () => {
                           {formatFecha(reserva.fecha, reserva.hora)}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {reserva.hora.slice(0, 5)}
+                          {reserva.hora.slice(0, 5)} hs
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
-                          {reserva.cama.nombre}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                        {reserva.credito?.pack?.nombre || "Pack Regular"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          Confirmada
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {reserva.credito ? (
-                          <div className="text-sm">
-                            <div className="font-semibold text-gray-900">
-                              {reserva.credito.pack.nombre}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {reserva.credito.creditos_restantes}/
-                              {reserva.credito.creditos_totales} créditos
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-500 italic">
-                            Sin pack
-                          </span>
-                        )}
-                      </td>
+
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              handleWhatsApp(
+                                reserva.usuario.telefono,
+                                `Hola ${
+                                  reserva.usuario.nombre
+                                }, te escribo por tu reserva del ${formatFecha(
+                                  reserva.fecha,
+                                  reserva.hora
+                                )} a las ${reserva.hora.slice(0, 5)}hs.`
+                              )
+                            }
+                            className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
+                            title="Enviar WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => releaseBooking(reserva.id, reserva)}
                             className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
@@ -854,7 +903,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {activeTab === "alumnas" && (
+      {activeTab === "users" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800">
@@ -955,16 +1004,30 @@ const AdminDashboard = () => {
                         </button>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => {
-                            setSelectedAlumna(alumna);
-                            setShowVenderPackModal(true);
-                          }}
-                          className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-medium transition-colors text-sm flex items-center gap-2"
-                        >
-                          <Gift className="w-4 h-4" />
-                          Vender Pack
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedAlumna(alumna);
+                              setShowVenderPackModal(true);
+                            }}
+                            className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-medium transition-colors text-sm flex items-center gap-2"
+                          >
+                            <CreditCard className="w-4 h-4" />
+                            Cargar Pack
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleWhatsApp(
+                                alumna.telefono,
+                                `Hola ${alumna.nombre}, te escribo de RunaFit.`
+                              )
+                            }
+                            className="p-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors"
+                            title="Enviar Mensaje"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -975,95 +1038,8 @@ const AdminDashboard = () => {
         </div>
       )}
 
+      {/* Packs Tab */}
       {activeTab === "packs" && estudio && <AdminPacks estudio={estudio} />}
-
-      {activeTab === "caja" && (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">
-              Movimientos de Caja
-            </h2>
-            <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold">
-              Total Mes: $
-              {ventas
-                .reduce((acc, curr) => acc + (curr.monto_pagado || 0), 0)
-                .toLocaleString("es-AR")}
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Fecha
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cliente
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Item
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Monto
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Método Pago
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {ventas.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan="5"
-                      className="px-6 py-8 text-center text-gray-500"
-                    >
-                      No hay movimientos registrados
-                    </td>
-                  </tr>
-                ) : (
-                  ventas.map((venta) => (
-                    <tr
-                      key={venta.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(venta.fecha_compra).toLocaleString("es-AR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                        {venta.usuario?.nombre || "Desconocido"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {venta.pack?.nombre || "Pack"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
-                        ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                            venta.metodo_pago === "efectivo"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-blue-100 text-blue-700"
-                          }`}
-                        >
-                          {venta.metodo_pago || "digital"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

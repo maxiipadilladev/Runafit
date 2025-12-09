@@ -1,32 +1,41 @@
-import { useState, useEffect } from 'react';
-import { Home as HomeIcon, Calendar, LayoutDashboard, Shield, Zap, LogIn, LogOut } from 'lucide-react';
-import Home from './components/Home';
-import ClientBookingView from './components/ClientBookingView';
-import AdminDashboard from './components/AdminDashboard';
-import LandingPage from './components/LandingPage';
-import LoginView from './components/LoginView';
-import Swal from 'sweetalert2';
+import { useState, useEffect } from "react";
+import {
+  Home as HomeIcon,
+  Calendar,
+  LayoutDashboard,
+  Shield,
+  Zap,
+  LogIn,
+  LogOut,
+} from "lucide-react";
+import Home from "./components/Home";
+import ClientBookingView from "./components/ClientBookingView";
+import AdminDashboard from "./components/AdminDashboard";
+import LandingPage from "./components/LandingPage";
+import LoginView from "./components/LoginView";
+import Swal from "sweetalert2";
+import { InstallPrompt } from "./components/InstallPrompt";
 
 function App() {
-  const [currentView, setCurrentView] = useState('login');
+  const [currentView, setCurrentView] = useState("login");
   const [usuario, setUsuario] = useState(null);
 
   // Revisar si ya hay sesión guardada
   useEffect(() => {
-    const userStr = localStorage.getItem('usuario');
+    const userStr = localStorage.getItem("usuario");
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
         setUsuario(user);
         // Redirigir según rol
-        if (user.rol === 'admin') {
-          setCurrentView('admin');
+        if (user.rol === "admin") {
+          setCurrentView("admin");
         } else {
-          setCurrentView('bookings');
+          setCurrentView("bookings");
         }
       } catch (error) {
-        console.error('Error cargando sesión:', error);
-        localStorage.removeItem('usuario');
+        console.error("Error cargando sesión:", error);
+        localStorage.removeItem("usuario");
       }
     }
   }, []);
@@ -34,37 +43,37 @@ function App() {
   const handleLogin = (user) => {
     setUsuario(user);
     // Redirigir según rol
-    if (user.rol === 'admin') {
-      setCurrentView('admin');
+    if (user.rol === "admin") {
+      setCurrentView("admin");
     } else {
-      setCurrentView('bookings');
+      setCurrentView("bookings");
     }
   };
 
   const handleLogout = async () => {
     const result = await Swal.fire({
-      icon: 'question',
-      title: '¿Cerrar sesión?',
-      text: 'Tendrás que volver a loguearte',
+      icon: "question",
+      title: "¿Cerrar sesión?",
+      text: "Tendrás que volver a loguearte",
       showCancelButton: true,
-      confirmButtonText: 'Sí, cerrar',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#a855f7',
-      cancelButtonColor: '#6b7280',
+      confirmButtonText: "Sí, cerrar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#a855f7",
+      cancelButtonColor: "#6b7280",
       allowOutsideClick: false,
-      allowEscapeKey: true
+      allowEscapeKey: true,
     });
 
     if (result.isConfirmed) {
-      localStorage.removeItem('usuario');
+      localStorage.removeItem("usuario");
       setUsuario(null);
-      setCurrentView('login');
+      setCurrentView("login");
       Swal.fire({
-        icon: 'success',
-        title: 'Sesión cerrada',
+        icon: "success",
+        title: "Sesión cerrada",
         timer: 1000,
         showConfirmButton: false,
-        confirmButtonColor: '#a855f7'
+        confirmButtonColor: "#a855f7",
       });
     }
   };
@@ -75,10 +84,14 @@ function App() {
   }
 
   const views = {
-    landing: { component: LandingPage, name: 'Landing', icon: Zap },
-    home: { component: Home, name: 'Inicio', icon: HomeIcon },
-    bookings: { component: ClientBookingView, name: 'Reservas', icon: Calendar },
-    admin: { component: AdminDashboard, name: 'Admin', icon: Shield },
+    landing: { component: LandingPage, name: "Landing", icon: Zap },
+    home: { component: Home, name: "Inicio", icon: HomeIcon },
+    bookings: {
+      component: ClientBookingView,
+      name: "Reservas",
+      icon: Calendar,
+    },
+    admin: { component: AdminDashboard, name: "Admin", icon: Shield },
   };
 
   const CurrentComponent = views[currentView].component;
@@ -91,40 +104,39 @@ function App() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
               <LayoutDashboard className="w-6 h-6 text-indigo-600" />
-              <span className="font-bold text-xl text-gray-800">
-                RunaFit - {usuario.nombre}
-              </span>
+              <span className="font-bold text-xl text-gray-800">RunaFit</span>
             </div>
-            
+
             <div className="flex gap-2">
               {Object.entries(views)
                 .filter(([key]) => {
                   // Mostrar landing solo para admins
-                  if (key === 'landing') return usuario.rol === 'admin';
+                  if (key === "landing") return usuario.rol === "admin";
                   // Filtrar según rol
-                  if (usuario.rol === 'admin') return key !== 'bookings';
-                  return key !== 'admin';
+                  if (usuario.rol === "admin") return key !== "bookings";
+                  return key !== "admin";
                 })
                 .map(([key, view]) => {
-                const Icon = view.icon;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setCurrentView(key)}
-                    className={`
+                  const Icon = view.icon;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setCurrentView(key)}
+                      className={`
                       flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all
-                      ${currentView === key
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-gray-600 hover:bg-gray-100'
+                      ${
+                        currentView === key
+                          ? "bg-indigo-600 text-white shadow-md"
+                          : "text-gray-600 hover:bg-gray-100"
                       }
                     `}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{view.name}</span>
-                  </button>
-                );
-              })}
-              
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="hidden sm:inline">{view.name}</span>
+                    </button>
+                  );
+                })}
+
               {/* Botón Logout */}
               <button
                 onClick={handleLogout}
@@ -141,8 +153,11 @@ function App() {
 
       {/* Vista Actual */}
       <CurrentComponent />
+
+      {/* Banner Instalar PWA */}
+      <InstallPrompt />
     </div>
   );
 }
 
-export default App
+export default App;
