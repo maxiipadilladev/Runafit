@@ -28,6 +28,7 @@ const AdminDashboard = () => {
   const [estudio, setEstudio] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showVenderPackModal, setShowVenderPackModal] = useState(false);
+  const [cajaPaymentFilter, setCajaPaymentFilter] = useState("all");
   const [selectedAlumna, setSelectedAlumna] = useState(null);
   const [editingUser, setEditingUser] = useState(null); // Para editar usuario
   const [searchTerm, setSearchTerm] = useState(""); // Buscador
@@ -801,7 +802,7 @@ const AdminDashboard = () => {
                           <tr className="md:hidden">
                             <td colSpan="5" className="p-0 border-none">
                               <div className="bg-white p-4 mb-3 rounded-xl shadow-sm border border-gray-100 mx-1">
-                                <div className="flex justify-between items-start mb-3">
+                                <div className="flex justify-between items-start">
                                   <div className="flex items-center gap-3">
                                     <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold shrink-0">
                                       {alumna.nombre.charAt(0)}
@@ -882,13 +883,28 @@ const AdminDashboard = () => {
 
       {activeTab === "caja" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">
-              Movimientos de Caja
-            </h2>
-            <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold">
-              Total Mes: $
+          <div className="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <h2 className="text-xl font-bold text-gray-800">Movimientos</h2>
+              <select
+                value={cajaPaymentFilter}
+                onChange={(e) => setCajaPaymentFilter(e.target.value)}
+                className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2"
+              >
+                <option value="all">Todos</option>
+                <option value="efectivo">Efectivo 💵</option>
+                <option value="transferencia">Transferencia 🏦</option>
+              </select>
+            </div>
+
+            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-bold w-full md:w-auto text-center">
+              Total: $
               {ventas
+                .filter(
+                  (v) =>
+                    cajaPaymentFilter === "all" ||
+                    v.metodo_pago === cajaPaymentFilter
+                )
                 .reduce((acc, curr) => acc + (curr.monto_pagado || 0), 0)
                 .toLocaleString("es-AR")}
             </div>
@@ -926,90 +942,95 @@ const AdminDashboard = () => {
                     </td>
                   </tr>
                 ) : (
-                  ventas.map((venta) => (
-                    <React.Fragment key={venta.id}>
-                      {/* Desktop Row */}
-                      <tr className="hover:bg-gray-50 transition-colors hidden md:table-row">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {new Date(venta.fecha_compra).toLocaleString(
-                            "es-AR",
-                            {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                          {venta.usuario?.nombre || "Desconocido"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {venta.pack?.nombre || "Pack"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
-                          ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                              venta.metodo_pago === "efectivo"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
-                          >
-                            {venta.metodo_pago || "digital"}
-                          </span>
-                        </td>
-                      </tr>
+                  ventas
+                    .filter(
+                      (v) =>
+                        cajaPaymentFilter === "all" ||
+                        v.metodo_pago === cajaPaymentFilter
+                    )
+                    .map((venta) => (
+                      <React.Fragment key={venta.id}>
+                        {/* Desktop Row */}
+                        <tr className="hover:bg-gray-50 transition-colors hidden md:table-row">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {new Date(venta.fecha_compra).toLocaleString(
+                              "es-AR",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                            {venta.usuario?.nombre || "Desconocido"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {venta.pack?.nombre || "Pack"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
+                            ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                                venta.metodo_pago === "efectivo"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {venta.metodo_pago || "digital"}
+                            </span>
+                          </td>
+                        </tr>
 
-                      {/* Mobile Card */}
-                      <tr className="md:hidden">
-                        <td colSpan="5" className="p-0 border-none">
-                          <div className="bg-white p-4 mb-3 rounded-xl shadow-sm border border-gray-100 mx-1">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h4 className="font-bold text-gray-800">
-                                  {venta.usuario?.nombre || "Cliente"}
-                                </h4>
-                                <p className="text-xs text-gray-500">
-                                  {new Date(venta.fecha_compra).toLocaleString(
-                                    "es-AR",
-                                    {
+                        {/* Mobile Card */}
+                        <tr className="md:hidden">
+                          <td colSpan="5" className="p-0 border-none">
+                            <div className="bg-white p-4 mb-3 rounded-xl shadow-sm border border-gray-100 mx-1">
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                  <h4 className="font-bold text-gray-800">
+                                    {venta.usuario?.nombre || "Cliente"}
+                                  </h4>
+                                  <p className="text-xs text-gray-500">
+                                    {new Date(
+                                      venta.fecha_compra
+                                    ).toLocaleString("es-AR", {
                                       day: "2-digit",
                                       month: "2-digit",
                                       hour: "2-digit",
                                       minute: "2-digit",
-                                    }
+                                    })}
+                                  </p>
+                                </div>
+                                <span className="text-lg font-black text-gray-800">
+                                  $
+                                  {(venta.monto_pagado || 0).toLocaleString(
+                                    "es-AR"
                                   )}
-                                </p>
+                                </span>
                               </div>
-                              <span className="text-lg font-black text-gray-800">
-                                $
-                                {(venta.monto_pagado || 0).toLocaleString(
-                                  "es-AR"
-                                )}
-                              </span>
+                              <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
+                                <span className="text-sm text-gray-700 font-medium">
+                                  {venta.pack?.nombre || "Pack"}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    venta.metodo_pago === "efectivo"
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-blue-100 text-blue-700"
+                                  }`}
+                                >
+                                  {venta.metodo_pago || "digital"}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
-                              <span className="text-sm text-gray-700 font-medium">
-                                {venta.pack?.nombre || "Pack"}
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                  venta.metodo_pago === "efectivo"
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-blue-100 text-blue-700"
-                                }`}
-                              >
-                                {venta.metodo_pago || "digital"}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    </React.Fragment>
-                  ))
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    ))
                 )}
               </tbody>
             </table>
