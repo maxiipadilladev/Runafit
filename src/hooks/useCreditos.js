@@ -46,7 +46,7 @@ export const useCreditos = () => {
   /*
    * Vender pack a una alumna (con logica de renovacion/acumulacion)
    */
-  const venderPack = async (alumnaId, packId, metodoPago) => {
+  const venderPack = async (alumnaId, packId, metodoPago, customVencimiento = null) => {
     try {
       // 1. Obtener info del pack a vender
       const { data: pack, error: packError } = await supabase
@@ -56,6 +56,19 @@ export const useCreditos = () => {
         .single();
 
       if (packError) throw packError;
+
+      const fechaCompra = new Date();
+      let fechaVencimiento;
+
+      if (customVencimiento) {
+        // Usar fecha personalizada (forzar final del día para evitar problemas de timezone)
+        fechaVencimiento = new Date(customVencimiento);
+        fechaVencimiento.setHours(23, 59, 59);
+      } else {
+        // Calcular default (HOY + dias pack)
+        fechaVencimiento = new Date(fechaCompra);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + pack.duracion_dias);
+      }
 
       // 2. Verificar si ya tiene un pack ACTIVO con creditos
       const { data: packsActivos } = await supabase
@@ -107,9 +120,7 @@ export const useCreditos = () => {
       }
 
       // B. Calcular nueva fecha vencimiento (HOY + dias pack)
-      const fechaCompra = new Date();
-      const fechaVencimiento = new Date(fechaCompra);
-      fechaVencimiento.setDate(fechaVencimiento.getDate() + pack.duracion_dias);
+      // This section is now handled by the new logic above.
 
       // C. Crear el NUEVO registro de crédito (suma total)
       // La "Caja" tomará este registro por fecha y monto.

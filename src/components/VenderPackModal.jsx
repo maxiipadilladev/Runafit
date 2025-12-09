@@ -14,6 +14,7 @@ export const VenderPackModal = ({
   const [selectedPack, setSelectedPack] = useState(null);
   const [metodoPago, setMetodoPago] = useState("transferencia");
   const [loading, setLoading] = useState(true);
+  const [fechaVencimiento, setFechaVencimiento] = useState("");
 
   const { getPacks, venderPack } = useCreditos();
 
@@ -23,6 +24,18 @@ export const VenderPackModal = ({
       cargarPacks();
     }
   }, [isOpen]);
+
+  // Actualizar fecha vencimiento cuando cambia el pack
+  useEffect(() => {
+    if (selectedPack && packs.length > 0) {
+      const pack = packs.find((p) => p.id === selectedPack);
+      if (pack) {
+        const fecha = new Date();
+        fecha.setDate(fecha.getDate() + pack.duracion_dias);
+        setFechaVencimiento(fecha.toISOString().split("T")[0]);
+      }
+    }
+  }, [selectedPack, packs]);
 
   const cargarPacks = async () => {
     setLoading(true);
@@ -56,7 +69,12 @@ export const VenderPackModal = ({
 
     if (!result.isConfirmed) return;
 
-    const credito = await venderPack(alumna.id, selectedPack, metodoPago);
+    const credito = await venderPack(
+      alumna.id,
+      selectedPack,
+      metodoPago,
+      fechaVencimiento
+    );
 
     if (credito) {
       onVendido(credito);
@@ -140,6 +158,22 @@ export const VenderPackModal = ({
                 </div>
               </div>
             )}
+
+            {/* Fecha de Vencimiento Editable */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Fecha de Vencimiento
+              </label>
+              <input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(e.target.value)}
+                className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Por defecto: Hoy + duración del pack
+              </p>
+            </div>
 
             {/* Método de pago */}
             <div>
