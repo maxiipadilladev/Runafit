@@ -64,18 +64,20 @@ const AdminDashboard = () => {
     if (!result.isConfirmed) return;
 
     try {
-      // Devolver crédito si existe
-      if (reserva.credito_id && reserva.credito?.estado === "activo") {
-        await supabase
+      // 1. Obtener crédito actual para verificación inteligente
+      let creditBefore = null;
+      let creditoId = reserva.credito_id;
+
+      if (creditoId) {
+        const { data } = await supabase
           .from("creditos_alumna")
-          .update({
-            creditos_restantes: (reserva.credito.creditos_restantes || 0) + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", reserva.credito_id);
+          .select("creditos_restantes")
+          .eq("id", creditoId)
+          .single();
+        creditBefore = data ? data.creditos_restantes : 0;
       }
 
-      // Eliminar reserva
+      // 2. Eliminar la reserva (Trigger debería ejecutarse)
       const { error } = await supabase
         .from("reservas")
         .delete()
@@ -83,15 +85,51 @@ const AdminDashboard = () => {
 
       if (error) throw error;
 
+      // 3. Verificación Inteligente + Refund Manual si es necesario
+      if (creditoId && creditBefore !== null) {
+        // Esperar propagación trigger
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const { data: creditAfterData } = await supabase
+          .from("creditos_alumna")
+          .select("creditos_restantes")
+          .eq("id", creditoId)
+          .single();
+
+        const creditAfter = creditAfterData
+          ? creditAfterData.creditos_restantes
+          : 0;
+
+        // Si no sumó nada, sumamos nosotros
+        if (creditAfter <= creditBefore) {
+          console.log("Admin: Trigger no aplicó refund. Ejecutando manual.");
+          const { error: rpcError } = await supabase.rpc("increment_creditos", {
+            row_id: creditoId,
+          });
+
+          if (rpcError) {
+            // Fallback update simple
+            await supabase
+              .from("creditos_alumna")
+              .update({
+                creditos_restantes: creditBefore + 1,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", creditoId);
+          }
+        }
+      }
+
       Swal.fire({
         icon: "success",
         title: "¡Cupo liberado!",
-        text: `Crédito devuelto a ${reserva.usuario.nombre}`,
+        text: `Crédito devuelto correctamente a ${reserva.usuario.nombre}`,
         timer: 1500,
         showConfirmButton: false,
         confirmButtonColor: "#10b981",
       });
       fetchReservas(); // Recargar datos
+      fetchKPIs(); // Actualizar contadores
     } catch (error) {
       console.error("Error al liberar cupo:", error);
       Swal.fire({
@@ -193,6 +231,8 @@ const AdminDashboard = () => {
           usuario:usuarios(dni, nombre, telefono),
           cama:camas(nombre),
           credito:creditos_alumna(
+            id,
+            estado,
             creditos_restantes,
             creditos_totales,
             pack:packs(nombre)

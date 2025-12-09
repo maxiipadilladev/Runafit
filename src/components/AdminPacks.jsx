@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Check, X } from "lucide-react";
 import { useCreditos } from "../hooks/useCreditos";
 import Swal from "sweetalert2";
@@ -139,7 +139,7 @@ export const AdminPacks = ({ estudio }) => {
             </thead>
             <tbody>
               {packs.map((pack) => (
-                <div key={pack.id} className="contents">
+                <React.Fragment key={pack.id}>
                   {/* Desktop Row */}
                   <tr className="border-b border-gray-700 hover:bg-gray-700/50 hidden md:table-row">
                     <td className="py-3 px-4">{pack.nombre}</td>
@@ -229,7 +229,7 @@ export const AdminPacks = ({ estudio }) => {
                       </div>
                     </td>
                   </tr>
-                </div>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
