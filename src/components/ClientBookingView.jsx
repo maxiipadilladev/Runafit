@@ -334,9 +334,11 @@ const ClientBookingView = () => {
 
     const beds = [1, 2, 3, 4, 5, 6];
     const camasOcupadas = reservasEnEseHorario?.map((r) => r.cama_id) || [];
-    const camaDisponible = beds.find((bed) => !camasOcupadas.includes(bed));
 
-    if (!camaDisponible) {
+    // Filtrar camas disponibles
+    const camasDisponibles = beds.filter((bed) => !camasOcupadas.includes(bed));
+
+    if (camasDisponibles.length === 0) {
       Swal.fire({
         icon: "error",
         title: "Sin camas disponibles",
@@ -345,6 +347,10 @@ const ClientBookingView = () => {
       });
       return;
     }
+
+    // Selección aleatoria
+    const randomIndex = Math.floor(Math.random() * camasDisponibles.length);
+    const camaDisponible = camasDisponibles[randomIndex];
 
     setSelectedSlot({ day, date, time, bed: camaDisponible, fecha: fechaISO });
   };
@@ -717,11 +723,14 @@ const ClientBookingView = () => {
       // Asumimos 8 camas (ids 1 al 8) o consultamos tabla camas. Por performance, hardcodeamos o leemos del state si existe.
       // Mejor leer tabla camas una vez al inicio, pero aquí haremos un loop simple de 1 a 6 (según chat anterior hay 6 reformers)
       let freeBedId = null;
-      for (let i = 1; i <= 6; i++) {
-        if (!busyBedIds.includes(i)) {
-          freeBedId = i;
-          break;
-        }
+
+      const ALL_BEDS = [1, 2, 3, 4, 5, 6];
+      const availableBeds = ALL_BEDS.filter((bed) => !busyBedIds.includes(bed));
+
+      if (availableBeds.length > 0) {
+        // Selección aleatoria
+        const randomIndex = Math.floor(Math.random() * availableBeds.length);
+        freeBedId = availableBeds[randomIndex];
       }
 
       if (!freeBedId) {
