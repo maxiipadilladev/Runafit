@@ -409,7 +409,7 @@ const LoginView = ({ onLogin }) => {
               href="https://wa.me/5493854834250?text=Hola,%20tengo%20problemas%20para%20ingresar%20a%20RunaFit"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-indigo-600 hover:text-indigo-500 underline decoration-indigo-200 decoration-2 underline-offset-2 hover:decoration-indigo-500 transition-all"
+              className="text-white font-semibold hover:underline hover:text-white transition-colors"
             >
               Contactá soporte
             </a>
