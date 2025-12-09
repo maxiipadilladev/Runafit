@@ -12,9 +12,12 @@ import {
   MessageCircle,
   CreditCard,
   Plus,
+  Search,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { AdminPacks } from "./AdminPacks";
+import { UserModal } from "./UserModal";
 import { VenderPackModal } from "./VenderPackModal";
 import { useCreditos } from "../hooks/useCreditos";
 import { GYM_CONSTANTS } from "../config/gymConstants";
@@ -26,6 +29,9 @@ const AdminDashboard = () => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [showVenderPackModal, setShowVenderPackModal] = useState(false);
   const [selectedAlumna, setSelectedAlumna] = useState(null);
+  const [editingUser, setEditingUser] = useState(null); // Para editar usuario
+  const [searchTerm, setSearchTerm] = useState(""); // Buscador
+
   const [reservas, setReservas] = useState([]);
   const [alumnas, setAlumnas] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -33,21 +39,76 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'users' | 'packs'
   const { getTodosCreditosAlumna } = useCreditos();
 
-  // Estado para formulario de nuevo usuario
-  const [newUser, setNewUser] = useState({
-    dni: "",
-    nombre: "",
-    telefono: "",
-    estudio_id: "",
-    turno: "mañana",
-  });
+  const handleUserSaved = () => {
+    fetchAlumnas();
+    fetchReservas();
+    setShowUserModal(false);
+    setEditingUser(null);
+  };
 
-  // Estado para horarios mixtos
-  const [schedules, setSchedules] = useState([]);
-  const [newSchedule, setNewSchedule] = useState({
-    dia_semana: "lunes",
-    hora: "08:00",
-  });
+  const releaseBooking = async (reservaId, reserva) => {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "¿Liberar este cupo?",
+      text: "El crédito será devuelto a la alumna",
+      showCancelButton: true,
+      confirmButtonText: "Sí, liberar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#ef4444",
+      cancelButtonColor: "#6b7280",
+      allowOutsideClick: false,
+      allowEscapeKey: true,
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // Devolver crédito si existe
+      if (reserva.credito_id && reserva.credito?.estado === "activo") {
+        await supabase
+          .from("creditos_alumna")
+          .update({
+            creditos_restantes: (reserva.credito.creditos_restantes || 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", reserva.credito_id);
+      }
+
+      // Eliminar reserva
+      const { error } = await supabase
+        .from("reservas")
+        .delete()
+        .eq("id", reservaId);
+
+      if (error) throw error;
+
+      Swal.fire({
+        icon: "success",
+        title: "¡Cupo liberado!",
+        text: `Crédito devuelto a ${reserva.usuario.nombre}`,
+        timer: 1500,
+        showConfirmButton: false,
+        confirmButtonColor: "#10b981",
+      });
+      fetchReservas(); // Recargar datos
+    } catch (error) {
+      console.error("Error al liberar cupo:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "No se pudo liberar el cupo",
+        confirmButtonColor: "#10b981",
+      });
+    }
+  };
+
+  const handleWhatsApp = (telefono, mensaje) => {
+    if (!telefono) return;
+    const url = `https://wa.me/549${telefono}?text=${encodeURIComponent(
+      mensaje
+    )}`;
+    window.open(url, "_blank");
+  };
 
   // Cargar datos del admin y estudio
   useEffect(() => {
@@ -242,7 +303,18 @@ const AdminDashboard = () => {
 
       const { data, error } = await supabase
         .from("usuarios")
-        .select("*")
+        .select(
+          `
+          *,
+          creditos:creditos_alumna(
+            creditos_restantes,
+            creditos_totales,
+            fecha_vencimiento,
+            pack:packs(nombre),
+            estado
+          )
+        `
+        )
         .eq("estudio_id", usuario.estudio_id)
         .eq("rol", "cliente")
         .order("nombre", { ascending: true });
@@ -251,186 +323,6 @@ const AdminDashboard = () => {
       setAlumnas(data || []);
     } catch (error) {
       console.error("Error al cargar alumnas:", error);
-    }
-  };
-
-  const saveSchedulesToDB = async (usuarioId) => {
-    if (schedules.length === 0) return;
-
-    for (const schedule of schedules) {
-      const { error } = await supabase.from("schedule_alumnas").insert({
-        usuario_id: usuarioId,
-        dia_semana: schedule.dia_semana,
-        hora: schedule.hora,
-        cama_preferida: null,
-      });
-
-      if (error) {
-        console.error("Error guardando horario:", error);
-      }
-    }
-  };
-
-  const releaseBooking = async (reservaId, reserva) => {
-    const result = await Swal.fire({
-      icon: "warning",
-      title: "¿Liberar este cupo?",
-      text: "El crédito será devuelto a la alumna",
-      showCancelButton: true,
-      confirmButtonText: "Sí, liberar",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#ef4444",
-      cancelButtonColor: "#6b7280",
-      allowOutsideClick: false,
-      allowEscapeKey: true,
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      // Devolver crédito si existe
-      if (reserva.credito_id && reserva.credito?.estado === "activo") {
-        await supabase
-          .from("creditos_alumna")
-          .update({
-            creditos_restantes: (reserva.credito.creditos_restantes || 0) + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", reserva.credito_id);
-      }
-
-      // Eliminar reserva
-      const { error } = await supabase
-        .from("reservas")
-        .delete()
-        .eq("id", reservaId);
-
-      if (error) throw error;
-
-      Swal.fire({
-        icon: "success",
-        title: "¡Cupo liberado!",
-        text: `Crédito devuelto a ${reserva.usuario.nombre}`,
-        timer: 1500,
-        showConfirmButton: false,
-        confirmButtonColor: "#10b981",
-      });
-      fetchReservas(); // Recargar datos
-    } catch (error) {
-      console.error("Error al liberar cupo:", error);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo liberar el cupo",
-        confirmButtonColor: "#10b981",
-      });
-    }
-  };
-
-  const handleWhatsApp = (telefono, mensaje) => {
-    if (!telefono) return;
-    // Limpiar teléfono (sacar 0, 15, guiones, etc si fuera necesario, o asumir formato correcto)
-    // Asumimos que guardan "381..."
-    const url = `https://wa.me/549${telefono}?text=${encodeURIComponent(
-      mensaje
-    )}`;
-    window.open(url, "_blank");
-  };
-
-  const createNewUser = async () => {
-    if (!newUser.dni || !newUser.nombre || !newUser.telefono) {
-      Swal.fire({
-        icon: "warning",
-        title: "Campos incompletos",
-        text: "Por favor completá todos los datos",
-        confirmButtonColor: "#10b981",
-      });
-      return;
-    }
-
-    if (newUser.dni.length < 7) {
-      Swal.fire({
-        icon: "warning",
-        title: "DNI inválido",
-        text: "Debe tener 8 dígitos",
-        confirmButtonColor: "#10b981",
-      });
-      return;
-    }
-
-    try {
-      // Verificar si el DNI ya existe ANTES de insertar
-      const { data: existingUser, error: checkError } = await supabase
-        .from("usuarios")
-        .select("dni, nombre")
-        .eq("dni", newUser.dni)
-        .single();
-
-      if (existingUser) {
-        Swal.fire({
-          icon: "warning",
-          title: "DNI ya registrado",
-          html: `Este DNI ya pertenece a: <strong>${existingUser.nombre}</strong><br><br>Verificá que no sea un error de tipeo.`,
-          confirmButtonColor: "#10b981",
-        });
-        return;
-      }
-
-      const { data: newUserData, error } = await supabase
-        .from("usuarios")
-        .insert({
-          dni: newUser.dni,
-          nombre: newUser.nombre,
-          telefono: newUser.telefono,
-          rol: "cliente",
-          estudio_id: parseInt(newUser.estudio_id),
-          turno: newUser.turno,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          Swal.fire({
-            icon: "warning",
-            title: "DNI duplicado",
-            text: "Este DNI ya está registrado en el sistema",
-            confirmButtonColor: "#10b981",
-          });
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      // Guardar horarios si existen
-      await saveSchedulesToDB(newUserData.id);
-
-      Swal.fire({
-        icon: "success",
-        title: "Cliente registrada",
-        text: `${newUser.nombre} puede loguearse con su DNI`,
-        confirmButtonColor: "#10b981",
-      });
-      setNewUser({
-        dni: "",
-        nombre: "",
-        telefono: "",
-        estudio_id: newUser.estudio_id,
-        turno: "mañana",
-      });
-      setSchedules([]);
-      setShowUserModal(false);
-      await fetchReservas();
-      await fetchAlumnas();
-    } catch (error) {
-      console.error("Error al crear usuario:", error);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: "No se pudo registrar la cliente",
-        confirmButtonColor: "#10b981",
-      });
     }
   };
 
@@ -458,23 +350,6 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
       <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
-        {/* Brand Header */}
-        <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100">
-          <img
-            src="/logo.svg"
-            alt="RunaFit Logo"
-            className="w-10 h-10 rounded-xl shadow-sm"
-          />
-          <div className="flex items-center">
-            <span className="text-xl font-black text-gray-800 tracking-tight">
-              RUNA
-            </span>
-            <span className="text-xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent ml-1">
-              FIT
-            </span>
-          </div>
-        </div>
-
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
@@ -492,202 +367,6 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Modal Nuevo Usuario */}
-      {showUserModal && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto"
-          onClick={(e) =>
-            e.target === e.currentTarget && setShowUserModal(false)
-          }
-          onKeyDown={(e) => e.key === "Escape" && setShowUserModal(false)}
-          tabIndex={0}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-4 md:p-6 relative my-8">
-            <button
-              onClick={() => setShowUserModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
-            <div className="text-center mb-4">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="w-8 h-8 text-green-600" />
-              </div>
-              <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-2">
-                Registrar Nueva Cliente
-              </h3>
-            </div>
-
-            <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  DNI (sin puntos)
-                </label>
-                <input
-                  type="text"
-                  value={newUser.dni}
-                  onChange={(e) =>
-                    setNewUser({
-                      ...newUser,
-                      dni: e.target.value.replace(/\D/g, "").slice(0, 8),
-                    })
-                  }
-                  placeholder="12345678"
-                  maxLength="8"
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Nombre Completo
-                </label>
-                <input
-                  type="text"
-                  value={newUser.nombre}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, nombre: e.target.value })
-                  }
-                  placeholder="María González"
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Teléfono
-                </label>
-                <input
-                  type="text"
-                  value={newUser.telefono}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, telefono: e.target.value })
-                  }
-                  placeholder="381-5551234"
-                  className="w-full px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all outline-none text-sm md:text-base"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Turno
-                </label>
-                <select
-                  className="w-full border p-2 rounded-lg"
-                  value={newUser.turno}
-                  onChange={(e) =>
-                    setNewUser({ ...newUser, turno: e.target.value })
-                  }
-                  disabled={loading}
-                >
-                  <option value="mañana">Mañana (09:00 - 13:00)</option>
-                  <option value="tarde">Tarde (18:00 - 21:00)</option>
-                </select>
-              </div>
-
-              <div className="border-t-2 border-gray-200 pt-3">
-                <h4 className="text-xs md:text-sm font-semibold text-gray-700 mb-2">
-                  Horarios (Días y Horas)
-                </h4>
-                <div className="space-y-2 mb-2">
-                  {schedules.length === 0 ? (
-                    <p className="text-xs text-gray-500 italic">
-                      Sin horarios agregados aún
-                    </p>
-                  ) : (
-                    schedules.map((sch, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between bg-gray-100 p-2 rounded"
-                      >
-                        <span className="text-xs md:text-sm font-semibold">
-                          {sch.dia_semana.charAt(0).toUpperCase() +
-                            sch.dia_semana.slice(1)}{" "}
-                          - {sch.hora}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setSchedules(schedules.filter((_, i) => i !== idx))
-                          }
-                          className="text-red-600 hover:text-red-800 text-xs font-bold"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <select
-                    value={newSchedule.dia_semana}
-                    onChange={(e) =>
-                      setNewSchedule({
-                        ...newSchedule,
-                        dia_semana: e.target.value,
-                      })
-                    }
-                    className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
-                  >
-                    {GYM_CONSTANTS.DIAS_SEMANA.filter((day) =>
-                      GYM_CONSTANTS.DIAS_Apertura.map((d) =>
-                        d.toLowerCase()
-                      ).includes(day.id.toLowerCase())
-                    ).map((day) => (
-                      <option key={day.id} value={day.id}>
-                        {day.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={newSchedule.hora}
-                    onChange={(e) =>
-                      setNewSchedule({ ...newSchedule, hora: e.target.value })
-                    }
-                    className="flex-1 px-2 md:px-3 py-2 border border-gray-300 rounded text-xs md:text-sm"
-                  >
-                    {GYM_CONSTANTS.HORARIOS_VALIDOS.map((hora) => (
-                      <option key={hora} value={hora}>
-                        {hora}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      if (
-                        !schedules.find(
-                          (s) =>
-                            s.dia_semana === newSchedule.dia_semana &&
-                            s.hora === newSchedule.hora
-                        )
-                      ) {
-                        setSchedules([...schedules, newSchedule]);
-                      }
-                    }}
-                    className="px-2 md:px-3 py-2 bg-blue-500 text-white rounded text-xs md:text-sm font-bold hover:bg-blue-600"
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 rounded-lg p-2 md:p-3 mb-4 border border-blue-200">
-              <p className="text-xs md:text-sm text-blue-800">
-                <span className="font-semibold">Nota:</span> La cliente podrá
-                loguearse con su DNI una vez registrada.
-              </p>
-            </div>
-
-            <button
-              onClick={createNewUser}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 md:py-4 rounded-xl transition-colors shadow-lg text-sm md:text-base"
-            >
-              Registrar Cliente
-            </button>
-          </div>
-        </div>
-      )}
       {/* KPIs Section - Scroll Horizontal en Mobile */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Card Turnos */}
@@ -743,19 +422,6 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Alertas */}
-      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3 mb-8">
-        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-        <div>
-          <h3 className="font-semibold text-green-800 mb-1">
-            Sistema de Créditos Activo
-          </h3>
-          <p className="text-sm text-green-700">
-            Reservas sincronizadas en tiempo real con créditos automáticos
-          </p>
-        </div>
-      </div>
-
       {/* Modal de Vender Pack */}
       {estudio && selectedAlumna && (
         <VenderPackModal
@@ -800,18 +466,6 @@ const AdminDashboard = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab("packs")}
-          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
-            activeTab === "packs"
-              ? "bg-indigo-600 text-white shadow-md"
-              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
-          }`}
-        >
-          <Package className="inline mr-2 w-4 h-4" />
-          Packs
-        </button>
-
-        <button
           onClick={() => setActiveTab("caja")}
           className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
             activeTab === "caja"
@@ -821,6 +475,18 @@ const AdminDashboard = () => {
         >
           <DollarSign className="inline mr-2 w-4 h-4" />
           Caja
+        </button>
+
+        <button
+          onClick={() => setActiveTab("packs")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "packs"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <Package className="inline mr-2 w-4 h-4" />
+          Packs
         </button>
       </div>
 
@@ -835,7 +501,7 @@ const AdminDashboard = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 hidden md:table-header-group">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Cliente
@@ -868,76 +534,115 @@ const AdminDashboard = () => {
                     </td>
                   </tr>
                 ) : (
-                  reservas.map((reserva) => (
-                    <tr key={reserva.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10">
-                            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-                              {reserva.usuario.nombre.charAt(0)}
+                  <>
+                    {/* PC View - Table Rows */}
+                    {reservas.map((reserva) => (
+                      <tr
+                        key={reserva.id}
+                        className="hover:bg-gray-50 hidden md:table-row"
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10">
+                              <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                                {reserva.usuario.nombre.charAt(0)}
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">
+                                {reserva.usuario.nombre}
+                              </div>
                             </div>
                           </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {reserva.usuario.nombre}
-                            </div>
-                            {/* Mostrar teléfono solo en móvil debajo del nombre */}
-                            <div className="text-xs text-gray-500 md:hidden">
-                              {reserva.usuario.telefono}
-                            </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                          {reserva.usuario.telefono}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatFecha(reserva.fecha, reserva.hora)}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                        {reserva.usuario.telefono}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {formatFecha(reserva.fecha, reserva.hora)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {reserva.hora.slice(0, 5)} hs
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                        {reserva.credito?.pack?.nombre || "Pack Regular"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                          Confirmada
-                        </span>
-                      </td>
+                          <div className="text-sm text-gray-500">
+                            {reserva.hora.slice(0, 5)} hs
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                          {reserva.credito?.pack?.nombre || "Pack Regular"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                            Confirmada
+                          </span>
+                        </td>
 
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() =>
-                              handleWhatsApp(
-                                reserva.usuario.telefono,
-                                `Hola ${
-                                  reserva.usuario.nombre
-                                }, te escribo por tu reserva del ${formatFecha(
-                                  reserva.fecha,
-                                  reserva.hora
-                                )} a las ${reserva.hora.slice(0, 5)}hs.`
-                              )
-                            }
-                            className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
-                            title="Enviar WhatsApp"
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() =>
+                                handleWhatsApp(
+                                  reserva.usuario.telefono,
+                                  `Hola ${
+                                    reserva.usuario.nombre
+                                  }, te escribo por tu reserva del ${formatFecha(
+                                    reserva.fecha,
+                                    reserva.hora
+                                  )} a las ${reserva.hora.slice(0, 5)}hs.`
+                                )
+                              }
+                              className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
+                              title="Enviar WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                releaseBooking(reserva.id, reserva)
+                              }
+                              className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                            >
+                              <X className="w-4 h-4" />
+                              Liberar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Mobile View - Cards */}
+                    <tr className="md:hidden">
+                      <td colSpan="6" className="p-4 space-y-4 bg-gray-50">
+                        {reservas.map((reserva) => (
+                          <div
+                            key={`mobile-${reserva.id}`}
+                            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between"
                           >
-                            <MessageCircle className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => releaseBooking(reserva.id, reserva)}
-                            className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
-                          >
-                            <X className="w-4 h-4" />
-                            Liberar Cupo
-                          </button>
-                        </div>
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold shrink-0">
+                                {reserva.usuario.nombre.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="font-bold text-gray-800">
+                                  {reserva.usuario.nombre}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {formatFecha(reserva.fecha, reserva.hora)} -{" "}
+                                  {reserva.hora.slice(0, 5)} hs
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() =>
+                                releaseBooking(reserva.id, reserva)
+                              }
+                              className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold border border-red-100"
+                            >
+                              Liberar
+                            </button>
+                          </div>
+                        ))}
                       </td>
                     </tr>
-                  ))
+                  </>
                 )}
               </tbody>
             </table>
@@ -947,27 +652,34 @@ const AdminDashboard = () => {
 
       {activeTab === "users" && (
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800">
-              Gestionar Créditos de Alumnas
-            </h2>
+          <div className="p-4 border-b border-gray-200">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, DNI..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 hidden md:table-header-group">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Nombre
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     DNI
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Teléfono
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Créditos Activos
+                    Créditos
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
@@ -975,104 +687,183 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {alumnas.length === 0 ? (
+                {alumnas.filter((alumna) => {
+                  const search = searchTerm.toLowerCase();
+                  return (
+                    alumna.nombre.toLowerCase().includes(search) ||
+                    alumna.dni.includes(search) ||
+                    alumna.telefono?.includes(search)
+                  );
+                }).length === 0 ? (
                   <tr>
                     <td
                       colSpan="5"
                       className="px-6 py-8 text-center text-gray-500"
                     >
-                      No hay alumnas registradas
+                      {searchTerm
+                        ? "No se encontraron resultados"
+                        : "No hay alumnas registradas"}
                     </td>
                   </tr>
                 ) : (
-                  alumnas.map((alumna) => (
-                    <tr
-                      key={alumna.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-medium text-gray-900">
-                          {alumna.nombre}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {alumna.dni}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {alumna.telefono}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={async () => {
-                            const creditos = await getTodosCreditosAlumna(
-                              alumna.id
-                            );
-                            const activos = creditos.filter(
-                              (c) => c.estado === "activo"
-                            );
-                            if (activos.length === 0) {
-                              Swal.fire({
-                                icon: "info",
-                                title: "Sin créditos activos",
-                                text: `${alumna.nombre} no tiene packs activos`,
-                                confirmButtonColor: "#10b981",
-                              });
-                            } else {
-                              Swal.fire({
-                                icon: "info",
-                                title: "Créditos Activos",
-                                html: activos
-                                  .map(
-                                    (c) => `
-                                  <div style="margin: 10px 0; padding: 10px; background: #f0f9ff; border-radius: 5px; text-align: left;">
-                                    <strong>${c.pack.nombre}</strong><br/>
-                                    ${c.creditos_restantes}/${
-                                      c.creditos_totales
-                                    } clases<br/>
-                                    <small style="color: #666;">Vence: ${new Date(
-                                      c.fecha_vencimiento
-                                    ).toLocaleDateString("es-AR")}</small>
+                  alumnas
+                    .filter((alumna) => {
+                      const search = searchTerm.toLowerCase();
+                      return (
+                        alumna.nombre.toLowerCase().includes(search) ||
+                        alumna.dni.includes(search) ||
+                        alumna.telefono?.includes(search)
+                      );
+                    })
+                    .map((alumna) => {
+                      // Buscar pack activo
+                      const creditoActivo = alumna.creditos?.find(
+                        (c) => c.estado === "activo" && c.creditos_restantes > 0
+                      );
+
+                      return (
+                        <React.Fragment key={alumna.id}>
+                          {/* Desktop Row */}
+                          <tr className="hover:bg-gray-50 hidden md:table-row">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold">
+                                  {alumna.nombre.charAt(0)}
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {alumna.nombre}
                                   </div>
-                                `
-                                  )
-                                  .join(""),
-                                confirmButtonColor: "#10b981",
-                              });
-                            }
-                          }}
-                          className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-medium transition-colors text-sm"
-                        >
-                          Ver
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedAlumna(alumna);
-                              setShowVenderPackModal(true);
-                            }}
-                            className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg font-medium transition-colors text-sm flex items-center gap-2"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            Cargar Pack
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleWhatsApp(
-                                alumna.telefono,
-                                `Hola ${alumna.nombre}, te escribo de RunaFit.`
-                              )
-                            }
-                            className="p-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors"
-                            title="Enviar Mensaje"
-                          >
-                            <MessageCircle className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                              {alumna.dni}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                              {alumna.telefono}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {creditoActivo ? (
+                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                  {creditoActivo.creditos_restantes} /{" "}
+                                  {creditoActivo.creditos_totales}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                  Sin Pack
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedAlumna(alumna);
+                                    setShowVenderPackModal(true);
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-3 py-1 rounded-lg"
+                                >
+                                  Cargar Pack
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingUser(alumna);
+                                    setShowUserModal(true);
+                                  }}
+                                  className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg"
+                                  title="Editar Datos"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleWhatsApp(
+                                      alumna.telefono,
+                                      `Hola ${alumna.nombre}!`
+                                    )
+                                  }
+                                  className="text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-lg"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Mobile Card */}
+                          <tr className="md:hidden">
+                            <td colSpan="5" className="p-0 border-none">
+                              <div className="bg-white p-4 mb-3 rounded-xl shadow-sm border border-gray-100 mx-1">
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold shrink-0">
+                                      {alumna.nombre.charAt(0)}
+                                    </div>
+                                    <div>
+                                      <h4 className="font-bold text-gray-800">
+                                        {alumna.nombre}
+                                      </h4>
+                                      <p className="text-xs text-gray-500">
+                                        {alumna.dni} • {alumna.telefono}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {creditoActivo ? (
+                                    <div className="text-right">
+                                      <span className="block text-xl font-black text-gray-800">
+                                        {creditoActivo.creditos_restantes}
+                                        <span className="text-sm text-gray-400 font-normal">
+                                          /{creditoActivo.creditos_totales}
+                                        </span>
+                                      </span>
+                                      <span className="text-xs text-green-600 font-semibold bg-green-50 px-2 py-0.5 rounded-full">
+                                        Activo
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full font-medium">
+                                      Sin Pack
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex gap-2 pt-2 border-t border-gray-50">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedAlumna(alumna);
+                                      setShowVenderPackModal(true);
+                                    }}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm hover:bg-indigo-700 transition-colors"
+                                  >
+                                    Cargar Pack
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingUser(alumna);
+                                      setShowUserModal(true);
+                                    }}
+                                    className="bg-blue-100 text-blue-700 p-2 rounded-lg hover:bg-blue-200 transition-colors"
+                                  >
+                                    <Pencil className="w-5 h-5" />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleWhatsApp(
+                                        alumna.telefono,
+                                        `Hola ${alumna.nombre}!`
+                                      )
+                                    }
+                                    className="bg-green-100 text-green-700 p-2 rounded-lg hover:bg-green-200 transition-colors"
+                                  >
+                                    <MessageCircle className="w-5 h-5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })
                 )}
               </tbody>
             </table>
@@ -1099,7 +890,7 @@ const AdminDashboard = () => {
 
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 hidden md:table-header-group">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Fecha
@@ -1130,45 +921,107 @@ const AdminDashboard = () => {
                   </tr>
                 ) : (
                   ventas.map((venta) => (
-                    <tr
-                      key={venta.id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(venta.fecha_compra).toLocaleString("es-AR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
-                        {venta.usuario?.nombre || "Desconocido"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {venta.pack?.nombre || "Pack"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
-                        ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                            venta.metodo_pago === "efectivo"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-blue-100 text-blue-700"
-                          }`}
-                        >
-                          {venta.metodo_pago || "digital"}
-                        </span>
-                      </td>
-                    </tr>
+                    <React.Fragment key={venta.id}>
+                      {/* Desktop Row */}
+                      <tr className="hover:bg-gray-50 transition-colors hidden md:table-row">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {new Date(venta.fecha_compra).toLocaleString(
+                            "es-AR",
+                            {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          {venta.usuario?.nombre || "Desconocido"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                          {venta.pack?.nombre || "Pack"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
+                          ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                              venta.metodo_pago === "efectivo"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {venta.metodo_pago || "digital"}
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* Mobile Card */}
+                      <tr className="md:hidden">
+                        <td colSpan="5" className="p-0 border-none">
+                          <div className="bg-white p-4 mb-3 rounded-xl shadow-sm border border-gray-100 mx-1">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <h4 className="font-bold text-gray-800">
+                                  {venta.usuario?.nombre || "Cliente"}
+                                </h4>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(venta.fecha_compra).toLocaleString(
+                                    "es-AR",
+                                    {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }
+                                  )}
+                                </p>
+                              </div>
+                              <span className="text-lg font-black text-gray-800">
+                                $
+                                {(venta.monto_pagado || 0).toLocaleString(
+                                  "es-AR"
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg">
+                              <span className="text-sm text-gray-700 font-medium">
+                                {venta.pack?.nombre || "Pack"}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  venta.metodo_pago === "efectivo"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {venta.metodo_pago || "digital"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+      {/* Modal User (Nuevo o Edición) */}
+      {showUserModal && (
+        <UserModal
+          isOpen={showUserModal}
+          onClose={() => {
+            setShowUserModal(false);
+            setEditingUser(null);
+          }}
+          onUserSaved={handleUserSaved}
+          userToEdit={editingUser}
+          estudioId={usuario?.estudio_id}
+        />
       )}
     </div>
   );

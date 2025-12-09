@@ -8,7 +8,7 @@ import {
   LogIn,
   LogOut,
 } from "lucide-react";
-import Home from "./components/Home";
+
 import ClientBookingView from "./components/ClientBookingView";
 import AdminDashboard from "./components/AdminDashboard";
 import LandingPage from "./components/LandingPage";
@@ -84,8 +84,6 @@ function App() {
   }
 
   const views = {
-    landing: { component: LandingPage, name: "Landing", icon: Zap },
-    home: { component: Home, name: "Inicio", icon: HomeIcon },
     bookings: {
       component: ClientBookingView,
       name: "Reservas",

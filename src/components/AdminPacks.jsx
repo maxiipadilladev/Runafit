@@ -125,7 +125,7 @@ export const AdminPacks = ({ estudio }) => {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-gray-300">
-            <thead className="border-b border-gray-600">
+            <thead className="border-b border-gray-600 hidden md:table-header-group">
               <tr>
                 <th className="text-left py-3 px-4 font-semibold">Nombre</th>
                 <th className="text-center py-3 px-4 font-semibold">Clases</th>
@@ -139,50 +139,97 @@ export const AdminPacks = ({ estudio }) => {
             </thead>
             <tbody>
               {packs.map((pack) => (
-                <tr
-                  key={pack.id}
-                  className="border-b border-gray-700 hover:bg-gray-700/50"
-                >
-                  <td className="py-3 px-4">{pack.nombre}</td>
-                  <td className="text-center py-3 px-4">
-                    {pack.cantidad_clases}
-                  </td>
-                  <td className="text-right py-3 px-4 font-semibold text-green-400">
-                    ${pack.precio.toLocaleString("es-AR")}
-                  </td>
-                  <td className="text-center py-3 px-4 text-xs text-gray-400">
-                    {pack.duracion_dias} días
-                  </td>
-                  <td className="text-center py-3 px-4">
-                    {pack.activo ? (
-                      <span className="text-green-400 text-xs font-semibold">
-                        ACTIVO
-                      </span>
-                    ) : (
-                      <span className="text-red-400 text-xs font-semibold">
-                        INACTIVO
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-right py-3 px-4 space-x-2">
-                    <button
-                      onClick={() => handleOpenModal(pack)}
-                      className="text-blue-400 hover:text-blue-300 transition"
-                      title="Editar"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    {pack.activo && (
+                <div key={pack.id} className="contents">
+                  {/* Desktop Row */}
+                  <tr className="border-b border-gray-700 hover:bg-gray-700/50 hidden md:table-row">
+                    <td className="py-3 px-4">{pack.nombre}</td>
+                    <td className="text-center py-3 px-4">
+                      {pack.cantidad_clases}
+                    </td>
+                    <td className="text-right py-3 px-4 font-semibold text-green-400">
+                      ${pack.precio.toLocaleString("es-AR")}
+                    </td>
+                    <td className="text-center py-3 px-4 text-xs text-gray-400">
+                      {pack.duracion_dias} días
+                    </td>
+                    <td className="text-center py-3 px-4">
+                      {pack.activo ? (
+                        <span className="text-green-400 text-xs font-semibold">
+                          ACTIVO
+                        </span>
+                      ) : (
+                        <span className="text-red-400 text-xs font-semibold">
+                          INACTIVO
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-right py-3 px-4 space-x-2">
                       <button
-                        onClick={() => handleDesactivar(pack.id)}
-                        className="text-red-400 hover:text-red-300 transition"
-                        title="Desactivar"
+                        onClick={() => handleOpenModal(pack)}
+                        className="text-blue-400 hover:text-blue-300 transition"
+                        title="Editar"
                       >
-                        <X size={18} />
+                        <Edit2 size={18} />
                       </button>
-                    )}
-                  </td>
-                </tr>
+                      {pack.activo && (
+                        <button
+                          onClick={() => handleDesactivar(pack.id)}
+                          className="text-red-400 hover:text-red-300 transition"
+                          title="Desactivar"
+                        >
+                          <X size={18} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* Mobile Card */}
+                  <tr className="md:hidden border-b border-gray-700">
+                    <td colSpan="6" className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-bold text-white text-lg">
+                            {pack.nombre}
+                          </h4>
+                          <span className="text-xs text-gray-400">
+                            {pack.cantidad_clases} clases • {pack.duracion_dias}{" "}
+                            días
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-green-400 font-bold text-lg">
+                            ${pack.precio.toLocaleString("es-AR")}
+                          </div>
+                          {pack.activo ? (
+                            <span className="text-green-400 text-[10px] font-semibold uppercase bg-green-900/30 px-2 py-0.5 rounded">
+                              Activo
+                            </span>
+                          ) : (
+                            <span className="text-red-400 text-[10px] font-semibold uppercase bg-red-900/30 px-2 py-0.5 rounded">
+                              Inactivo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-3 mt-3 pt-3 border-t border-gray-700/50">
+                        <button
+                          onClick={() => handleOpenModal(pack)}
+                          className="text-blue-400 hover:text-blue-300 transition flex items-center gap-1 text-sm font-medium"
+                        >
+                          <Edit2 size={16} /> Editar
+                        </button>
+                        {pack.activo && (
+                          <button
+                            onClick={() => handleDesactivar(pack.id)}
+                            className="text-red-400 hover:text-red-300 transition flex items-center gap-1 text-sm font-medium"
+                          >
+                            <X size={16} /> Desactivar
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                </div>
               ))}
             </tbody>
           </table>
