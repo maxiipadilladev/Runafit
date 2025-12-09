@@ -1,27 +1,45 @@
 export const GYM_CONSTANTS = {
-    DIAS_Apertura: ['Lunes', 'Miércoles', 'Viernes'], // Días principales según chat/código previo
+    // Días de apertura general (Lun-Vie)
+    DIAS_Apertura: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'],
+
     TURNOS: {
         MAÑANA: {
-            label: 'Mañana (09:00 - 13:00)',
-            horarios: ['09:00', '10:00', '11:00', '12:00']
+            label: 'Mañana (07:00 - 09:00)',
+            horarios: ['07:00', '08:00', '09:00']
         },
         TARDE: {
-            label: 'Tarde (18:00 - 21:00)',
-            horarios: ['18:00', '19:00', '20:00', '21:00']
+            label: 'Tarde (17:00 - 23:00)',
+            horarios: ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00']
         }
     },
-    // Todos los horarios válidos combinados para validaciones
+
+    // Mapa de horarios permitidos por día
+    // Lunes, Miércoles, Viernes: Mañana y Tarde
+    // Martes, Jueves: Solo Mañana
+    getHorariosPorDia: (diaSemana) => {
+        const dia = diaSemana.toLowerCase();
+        const manana = ['07:00', '08:00', '09:00'];
+        const tarde = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'];
+
+        if (['lunes', 'miércoles', 'viernes'].includes(dia)) {
+            return [...manana, ...tarde];
+        }
+        if (['martes', 'jueves'].includes(dia)) {
+            return [...manana];
+        }
+        return []; // Sábado/Domingo cerrado
+    },
+
+    // Getters auxiliares
     get HORARIOS_VALIDOS() {
         return [...this.TURNOS.MAÑANA.horarios, ...this.TURNOS.TARDE.horarios];
     },
-    // Días de la semana para mapeo
+
     DIAS_SEMANA: [
         { id: 'lunes', label: 'Lunes' },
         { id: 'martes', label: 'Martes' },
         { id: 'miércoles', label: 'Miércoles' },
         { id: 'jueves', label: 'Jueves' },
         { id: 'viernes', label: 'Viernes' },
-        { id: 'sábado', label: 'Sábado' },
-        // Domingo cerrado según inferencia "comercial"
     ]
 };

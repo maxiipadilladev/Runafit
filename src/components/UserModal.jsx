@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Users, X, Save } from "lucide-react";
 import Swal from "sweetalert2";
 import { supabase } from "../lib/supabase";
+import { GYM_CONSTANTS } from "../config/gymConstants";
 
 export const UserModal = ({
   isOpen,
@@ -279,8 +280,10 @@ export const UserModal = ({
                 setFormData({ ...formData, turno: e.target.value })
               }
             >
-              <option value="mañana">Mañana (09:00 - 13:00)</option>
-              <option value="tarde">Tarde (18:00 - 21:00)</option>
+              <option value="mañana">
+                {GYM_CONSTANTS.TURNOS.MAÑANA.label}
+              </option>
+              <option value="tarde">{GYM_CONSTANTS.TURNOS.TARDE.label}</option>
             </select>
           </div>
 
@@ -311,24 +314,36 @@ export const UserModal = ({
               <select
                 className="flex-1 border p-1 rounded text-sm"
                 value={newSchedule.dia_semana}
-                onChange={(e) =>
-                  setNewSchedule({ ...newSchedule, dia_semana: e.target.value })
-                }
+                onChange={(e) => {
+                  const nuevoDia = e.target.value;
+                  const horariosDia = GYM_CONSTANTS.getHorariosPorDia(nuevoDia);
+                  setNewSchedule({
+                    dia_semana: nuevoDia,
+                    hora: horariosDia.length > 0 ? horariosDia[0] : "",
+                  });
+                }}
               >
-                <option value="lunes">Lunes</option>
-                <option value="martes">Martes</option>
-                <option value="miércoles">Miércoles</option>
-                <option value="jueves">Jueves</option>
-                <option value="viernes">Viernes</option>
+                {GYM_CONSTANTS.DIAS_SEMANA.map((dia) => (
+                  <option key={dia.id} value={dia.id}>
+                    {dia.label}
+                  </option>
+                ))}
               </select>
-              <input
-                type="time"
+              <select
                 className="border p-1 rounded text-sm w-24"
                 value={newSchedule.hora}
                 onChange={(e) =>
                   setNewSchedule({ ...newSchedule, hora: e.target.value })
                 }
-              />
+              >
+                {GYM_CONSTANTS.getHorariosPorDia(newSchedule.dia_semana).map(
+                  (h) => (
+                    <option key={h} value={h}>
+                      {h} hs
+                    </option>
+                  )
+                )}
+              </select>
               <button
                 onClick={handleAddSchedule}
                 className="bg-gray-200 hover:bg-gray-300 px-3 rounded text-sm font-bold"

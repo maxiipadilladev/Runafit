@@ -242,6 +242,10 @@ const ClientBookingView = () => {
         } else {
           slots = GYM_CONSTANTS.HORARIOS_VALIDOS;
         }
+
+        // 3. Filtrar slots según disponibilidad real del día (ej: Martes no tiene tarde)
+        const horariosValidosDia = GYM_CONSTANTS.getHorariosPorDia(diaNombre);
+        slots = slots.filter((slot) => horariosValidosDia.includes(slot));
       }
 
       // Si no hay slots para mostrar (ej: Caso B), saltamos el día
