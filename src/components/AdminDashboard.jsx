@@ -346,11 +346,12 @@ const AdminDashboard = () => {
           `
           *,
           creditos:creditos_alumna(
+            id,
+            estado,
             creditos_restantes,
             creditos_totales,
             fecha_vencimiento,
-            pack:packs(nombre),
-            estado
+            pack:packs(nombre)
           )
         `
         )
@@ -805,10 +806,23 @@ const AdminDashboard = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               {creditoActivo ? (
-                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                  {creditoActivo.creditos_restantes} /{" "}
-                                  {creditoActivo.creditos_totales}
-                                </span>
+                                <div>
+                                  <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                    {creditoActivo.creditos_restantes} /{" "}
+                                    {creditoActivo.creditos_totales}
+                                  </span>
+                                  {creditoActivo.fecha_vencimiento && (
+                                    <div className="text-[10px] text-gray-500 mt-1 text-center">
+                                      Vence:{" "}
+                                      {new Date(
+                                        creditoActivo.fecha_vencimiento
+                                      ).toLocaleDateString("es-AR", {
+                                        day: "numeric",
+                                        month: "short",
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
                                   Sin Pack
@@ -880,6 +894,27 @@ const AdminDashboard = () => {
                                       <span className="text-xs text-green-600 font-semibold bg-green-50 px-2 py-0.5 rounded-full">
                                         Activo
                                       </span>
+                                      {creditoActivo.fecha_vencimiento && (
+                                        <div className="text-[10px] text-gray-500 mt-1 text-right leading-tight">
+                                          📅 Vence:{" "}
+                                          {new Date(
+                                            creditoActivo.fecha_vencimiento
+                                          ).toLocaleDateString("es-AR", {
+                                            day: "numeric",
+                                            month: "short",
+                                          })}
+                                          <br />
+                                          (en{" "}
+                                          {Math.ceil(
+                                            (new Date(
+                                              creditoActivo.fecha_vencimiento
+                                            ) -
+                                              new Date()) /
+                                              (1000 * 60 * 60 * 24)
+                                          )}{" "}
+                                          días)
+                                        </div>
+                                      )}
                                     </div>
                                   ) : (
                                     <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full font-medium">
