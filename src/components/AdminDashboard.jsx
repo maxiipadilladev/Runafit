@@ -518,6 +518,9 @@ const AdminDashboard = () => {
                     Actividad
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                    Cama
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                     Estado
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -570,6 +573,9 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
                           {reserva.credito?.pack?.nombre || "Pack Regular"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell font-medium">
+                          {reserva.cama?.nombre || "-"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -624,6 +630,9 @@ const AdminDashboard = () => {
                                 <p className="text-sm text-gray-500">
                                   {formatFecha(reserva.fecha, reserva.hora)} -{" "}
                                   {reserva.hora.slice(0, 5)} hs
+                                </p>
+                                <p className="text-xs text-indigo-600 font-semibold mt-1">
+                                  {reserva.cama?.nombre || "Sin Asignar"}
                                 </p>
                               </div>
                             </div>
