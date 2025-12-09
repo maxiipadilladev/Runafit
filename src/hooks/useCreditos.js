@@ -43,9 +43,12 @@ export const useCreditos = () => {
   /**
    * Vender pack a una alumna
    */
+  /*
+   * Vender pack a una alumna (con logica de renovacion/acumulacion)
+   */
   const venderPack = async (alumnaId, packId, metodoPago) => {
     try {
-      // Obtener info del pack
+      // 1. Obtener info del pack a vender
       const { data: pack, error: packError } = await supabase
         .from('packs')
         .select('*')
@@ -54,23 +57,76 @@ export const useCreditos = () => {
 
       if (packError) throw packError;
 
-      // Calcular fecha vencimiento
+      // 2. Verificar si ya tiene un pack ACTIVO con creditos
+      const { data: packsActivos } = await supabase
+        .from('creditos_alumna')
+        .select('*')
+        .eq('alumna_id', alumnaId)
+        .eq('estado', 'activo')
+        .gt('creditos_restantes', 0);
+
+      let creditosAcumulados = 0;
+      let packAnteriorId = null;
+
+      // Si tiene activo, preguntar si quiere RENOVAR (acumular)
+      if (packsActivos && packsActivos.length > 0) {
+        const packAnterior = packsActivos[0]; // Tomamos el primero/más relevante
+
+        const confirmResult = await Swal.fire({
+          icon: 'info',
+          title: 'Pack activo detectado',
+          html: `<p>Esta alumna ya tiene <strong>${packAnterior.creditos_restantes} clases</strong> disponibles.</p>
+                 <p>¿Querés sumarlas al nuevo pack (Renovación)?</p>`,
+          showCancelButton: true,
+          confirmButtonText: 'Sí, sumar y renovar',
+          cancelButtonText: 'Cancelar venta',
+          confirmButtonColor: '#3b82f6'
+        });
+
+        if (!confirmResult.isConfirmed) {
+          return null; // Cancela la operación
+        }
+
+        // Si confirma, guardamos los créditos para sumarlos
+        creditosAcumulados = packAnterior.creditos_restantes;
+        packAnteriorId = packAnterior.id;
+      }
+
+      // 3. Iniciar Transacción (simulada)
+
+      // A. Si hubo renovación, marcamos el anterior como "agotado" (vacío y cerrado)
+      if (packAnteriorId) {
+        await supabase
+          .from('creditos_alumna')
+          .update({
+            creditos_restantes: 0, // Vaciamos porque se sumaron al nuevo
+            estado: 'agotado',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', packAnteriorId);
+      }
+
+      // B. Calcular nueva fecha vencimiento (HOY + dias pack)
       const fechaCompra = new Date();
       const fechaVencimiento = new Date(fechaCompra);
       fechaVencimiento.setDate(fechaVencimiento.getDate() + pack.duracion_dias);
 
-      // Crear registro de crédito
+      // C. Crear el NUEVO registro de crédito (suma total)
+      // La "Caja" tomará este registro por fecha y monto.
+      // El "Sistema de Reservas" tomará este registro como el único activo.
+      const nuevosCreditosTotales = pack.cantidad_clases + creditosAcumulados;
+
       const { data: credito, error: creditoError } = await supabase
         .from('creditos_alumna')
         .insert({
           alumna_id: alumnaId,
           pack_id: packId,
-          creditos_totales: pack.cantidad_clases,
-          creditos_restantes: pack.cantidad_clases,
+          creditos_totales: nuevosCreditosTotales, // Total del pack + lo que traía
+          creditos_restantes: nuevosCreditosTotales, // Todo disponible hoy
           fecha_compra: fechaCompra.toISOString(),
           fecha_vencimiento: fechaVencimiento.toISOString(),
           estado: 'activo',
-          monto_pagado: pack.precio,
+          monto_pagado: pack.precio, // Precio cobrado hoy (solo el del pack nuevo)
           metodo_pago: metodoPago
         })
         .select()
@@ -80,9 +136,9 @@ export const useCreditos = () => {
 
       Swal.fire({
         icon: 'success',
-        title: '¡Pack vendido!',
-        html: `<p>Se vendió <strong>${pack.nombre}</strong></p>
-               <p>Créditos disponibles: ${pack.cantidad_clases}</p>
+        title: creditosAcumulados > 0 ? '¡Pack Renovado!' : '¡Pack Vendido!',
+        html: `<p>Se cargó <strong>${pack.nombre}</strong></p>
+               <p>Créditos totales: <strong>${nuevosCreditosTotales}</strong> (Pack: ${pack.cantidad_clases} + Acum: ${creditosAcumulados})</p>
                <p style="font-size: 12px; color: #666; margin-top: 10px;">
                  Vence: ${fechaVencimiento.toLocaleDateString('es-AR')}
                </p>`,
@@ -90,12 +146,13 @@ export const useCreditos = () => {
       });
 
       return credito;
+
     } catch (error) {
       console.error('Error vendiendo pack:', error);
       Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: 'No se pudo vender el pack',
+        text: 'No se pudo procesar la venta',
         confirmButtonColor: '#10b981'
       });
       return null;

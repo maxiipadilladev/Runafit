@@ -177,8 +177,6 @@ const AdminDashboard = () => {
 
       if (error) throw error;
       setEstudio(data);
-      // Auto-llenar estudio_id en el formulario
-      setNewUser((prev) => ({ ...prev, estudio_id: estudioId.toString() }));
     } catch (error) {
       console.error("Error al cargar estudio:", error);
     }
@@ -435,6 +433,10 @@ const AdminDashboard = () => {
           onVendido={() => {
             setShowVenderPackModal(false);
             setSelectedAlumna(null);
+            fetchAlumnas();
+            fetchVentas();
+            fetchKPIs();
+            fetchReservas();
           }}
         />
       )}
