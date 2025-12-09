@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { useCreditos } from '../hooks/useCreditos';
-import Swal from 'sweetalert2';
+import { useState, useEffect } from "react";
+import { X } from "lucide-react";
+import { useCreditos } from "../hooks/useCreditos";
+import Swal from "sweetalert2";
 
-export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido }) => {
+export const VenderPackModal = ({
+  isOpen,
+  onClose,
+  alumna,
+  estudio,
+  onVendido,
+}) => {
   const [packs, setPacks] = useState([]);
   const [selectedPack, setSelectedPack] = useState(null);
-  const [metodoPago, setMetodoPago] = useState('transferencia');
+  const [metodoPago, setMetodoPago] = useState("transferencia");
   const [loading, setLoading] = useState(true);
 
   const { getPacks, venderPack } = useCreditos();
@@ -31,21 +37,21 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
   const handleVender = async () => {
     if (!selectedPack) {
       Swal.fire({
-        icon: 'warning',
-        title: 'Selecciona un pack',
-        confirmButtonColor: '#10b981'
+        icon: "warning",
+        title: "Selecciona un pack",
+        confirmButtonColor: "#10b981",
       });
       return;
     }
 
     const result = await Swal.fire({
-      icon: 'question',
-      title: '¿Confirmar venta?',
+      icon: "question",
+      title: "¿Confirmar venta?",
       text: `Vender pack a ${alumna.nombre}`,
       showCancelButton: true,
-      confirmButtonText: 'Sí, vender',
-      cancelButtonText: 'Cancelar',
-      confirmButtonColor: '#10b981'
+      confirmButtonText: "Sí, vender",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#10b981",
     });
 
     if (!result.isConfirmed) return;
@@ -64,7 +70,7 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 max-h-96 overflow-y-auto">
+      <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-white">Vender Pack</h3>
@@ -84,9 +90,13 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
         </div>
 
         {loading ? (
-          <div className="text-center text-gray-400 py-8">Cargando packs...</div>
+          <div className="text-center text-gray-400 py-8">
+            Cargando packs...
+          </div>
         ) : packs.length === 0 ? (
-          <div className="text-center text-gray-400 py-8">No hay packs activos</div>
+          <div className="text-center text-gray-400 py-8">
+            No hay packs activos
+          </div>
         ) : (
           <form className="space-y-4">
             {/* Seleccionar pack */}
@@ -101,7 +111,7 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
               >
                 {packs.map((pack) => (
                   <option key={pack.id} value={pack.id}>
-                    {pack.nombre} - ${pack.precio.toLocaleString('es-AR')}
+                    {pack.nombre} - ${pack.precio.toLocaleString("es-AR")}
                   </option>
                 ))}
               </select>
@@ -125,7 +135,7 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
                 <div className="flex justify-between text-sm border-t border-blue-800 pt-2 mt-2">
                   <span className="text-gray-300">Precio:</span>
                   <span className="text-green-400 font-semibold text-lg">
-                    ${packSeleccionado.precio.toLocaleString('es-AR')}
+                    ${packSeleccionado.precio.toLocaleString("es-AR")}
                   </span>
                 </div>
               </div>
@@ -141,7 +151,7 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
                   <input
                     type="radio"
                     value="transferencia"
-                    checked={metodoPago === 'transferencia'}
+                    checked={metodoPago === "transferencia"}
                     onChange={(e) => setMetodoPago(e.target.value)}
                     className="w-4 h-4"
                   />
@@ -151,7 +161,7 @@ export const VenderPackModal = ({ isOpen, onClose, alumna, estudio, onVendido })
                   <input
                     type="radio"
                     value="efectivo"
-                    checked={metodoPago === 'efectivo'}
+                    checked={metodoPago === "efectivo"}
                     onChange={(e) => setMetodoPago(e.target.value)}
                     className="w-4 h-4"
                   />
