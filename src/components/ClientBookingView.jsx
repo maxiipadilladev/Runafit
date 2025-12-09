@@ -13,6 +13,7 @@ import {
   Minus,
   User,
   Gift,
+  Instagram,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useCreditos } from "../hooks/useCreditos";
@@ -33,6 +34,7 @@ const ClientBookingView = () => {
 
   // Cargar usuario actual
   useEffect(() => {
+    window.scrollTo(0, 0); // Forzar scroll arriba al cargar
     const userStr = localStorage.getItem("usuario");
     if (userStr) {
       const user = JSON.parse(userStr);
@@ -568,17 +570,14 @@ const ClientBookingView = () => {
       {/* Header */}
       <div className="max-w-md mx-auto mb-6">
         <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="text-2xl font-black">RUNA</div>
-            <div className="text-2xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
-              FIT
-            </div>
+          <div className="mb-4 -mx-6 -mt-6">
+            <img
+              src="/bodyfit_logo.jpg"
+              alt="Body Fit Pilates"
+              className="w-full h-auto object-cover rounded-t-2xl"
+            />
           </div>
-          {estudio && (
-            <p className="text-sm text-gray-500 font-semibold mb-3">
-              {estudio.nombre}
-            </p>
-          )}
+
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
             Hola, {usuario?.nombre || "Cliente"} 👋
           </h1>
@@ -800,6 +799,13 @@ const ClientBookingView = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Footer Branding */}
+      <div className="mt-10 mb-6 text-center">
+        <p className="text-xs text-gray-400 font-medium">
+          Powered by <span className="text-purple-400 font-bold">RunaTech</span>
+        </p>
       </div>
     </div>
   );

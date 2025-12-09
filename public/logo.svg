@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="128" fill="url(#paint0_linear)"/>
+  <path d="M256 120C256 120 200 190 200 240C200 273.137 226.863 300 256 300C285.137 300 312 273.137 312 240C312 190 256 120 256 120Z" fill="white" fill-opacity="0.9"/>
+  <path d="M256 300C226.863 300 180 260 160 220C140 180 120 200 120 240C120 310 200 360 256 360C312 360 392 310 392 240C392 200 372 180 352 220C332 260 285.137 300 256 300Z" fill="white" fill-opacity="0.9"/>
+  <path d="M256 360C200 360 160 340 160 340C160 340 180 380 256 380C332 380 352 340 352 340C352 340 312 360 256 360Z" fill="white" fill-opacity="0.9"/>
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#9333ea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#db2777;stop-opacity:1" />
+    <linearGradient id="paint0_linear" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9333EA"/>
+      <stop offset="1" stop-color="#EC4899"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="100" fill="url(#grad1)" />
-  <path d="M180 380 V130 H280 C340 130 380 160 380 220 C380 260 350 290 310 300 L390 380 H320 L250 310 H250 V380 Z" fill="white" font-weight="900" />
-  <text x="50%" y="450" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="60" fill="white" letter-spacing="4">RUNAFIT</text>
 </svg>

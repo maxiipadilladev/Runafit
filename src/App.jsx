@@ -102,9 +102,20 @@ function App() {
       <nav className="bg-white shadow-lg sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <LayoutDashboard className="w-6 h-6 text-indigo-600" />
-              <span className="font-bold text-xl text-gray-800">RunaFit</span>
+            <div className="flex items-center gap-3">
+              <img
+                src="/logo.svg"
+                alt="RunaFit"
+                className="w-8 h-8 rounded-lg shadow-sm"
+              />
+              <div className="flex items-baseline">
+                <span className="font-black text-xl text-gray-800 tracking-tight">
+                  RUNA
+                </span>
+                <span className="font-black text-xl bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent ml-0.5">
+                  FIT
+                </span>
+              </div>
             </div>
 
             <div className="flex gap-2">

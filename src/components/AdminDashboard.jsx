@@ -59,6 +59,7 @@ const AdminDashboard = () => {
     }
     fetchReservas();
     fetchKPIs();
+    fetchVentas(); // Cargar historial de ventas
 
     // Suscripción a cambios en tiempo real
     const channel = supabase
@@ -149,6 +150,29 @@ const AdminDashboard = () => {
       alert("Error al cargar las reservas");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchVentas = async () => {
+    try {
+      if (!usuario?.estudio_id) return;
+
+      const { data, error } = await supabase
+        .from("creditos_alumna")
+        .select(
+          `
+          *,
+          usuario:usuarios!inner(nombre, estudio_id),
+          pack:packs(nombre)
+        `
+        )
+        .eq("usuario.estudio_id", usuario.estudio_id)
+        .order("fecha_compra", { ascending: false });
+
+      if (error) throw error;
+      setVentas(data || []);
+    } catch (error) {
+      console.error("Error cargando ventas:", error);
     }
   };
 
@@ -434,6 +458,23 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
       <div className="mb-10 bg-white rounded-2xl shadow-lg p-6 md:p-8">
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100">
+          <img
+            src="/logo.svg"
+            alt="RunaFit Logo"
+            className="w-10 h-10 rounded-xl shadow-sm"
+          />
+          <div className="flex items-center">
+            <span className="text-xl font-black text-gray-800 tracking-tight">
+              RUNA
+            </span>
+            <span className="text-xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent ml-1">
+              FIT
+            </span>
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
@@ -447,17 +488,6 @@ const AdminDashboard = () => {
           >
             <Plus className="w-5 h-5" />
             Nueva Cliente
-          </button>
-          <button
-            onClick={() => setActiveTab("caja")}
-            className={`px-4 py-3 font-semibold text-sm md:text-base transition-colors border-b-2 ${
-              activeTab === "caja"
-                ? "text-purple-600 border-purple-600"
-                : "text-gray-600 border-transparent hover:text-gray-800"
-            }`}
-          >
-            <DollarSign className="inline mr-2 w-4 h-4" />
-            Caja
           </button>
         </div>
       </div>
@@ -780,6 +810,18 @@ const AdminDashboard = () => {
           <Package className="inline mr-2 w-4 h-4" />
           Packs
         </button>
+
+        <button
+          onClick={() => setActiveTab("caja")}
+          className={`whitespace-nowrap flex items-center px-4 py-2 rounded-lg font-medium transition-all ${
+            activeTab === "caja"
+              ? "bg-indigo-600 text-white shadow-md"
+              : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+          }`}
+        >
+          <DollarSign className="inline mr-2 w-4 h-4" />
+          Caja
+        </button>
       </div>
 
       {/* Contenido según pestaña activa */}
@@ -1040,6 +1082,94 @@ const AdminDashboard = () => {
 
       {/* Packs Tab */}
       {activeTab === "packs" && estudio && <AdminPacks estudio={estudio} />}
+
+      {activeTab === "caja" && (
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-800">
+              Movimientos de Caja
+            </h2>
+            <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold">
+              Total Mes: $
+              {ventas
+                .reduce((acc, curr) => acc + (curr.monto_pagado || 0), 0)
+                .toLocaleString("es-AR")}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cliente
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Item
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Monto
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Método Pago
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {ventas.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan="5"
+                      className="px-6 py-8 text-center text-gray-500"
+                    >
+                      No hay movimientos registrados
+                    </td>
+                  </tr>
+                ) : (
+                  ventas.map((venta) => (
+                    <tr
+                      key={venta.id}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {new Date(venta.fecha_compra).toLocaleString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                        {venta.usuario?.nombre || "Desconocido"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {venta.pack?.nombre || "Pack"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">
+                        ${(venta.monto_pagado || 0).toLocaleString("es-AR")}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                            venta.metodo_pago === "efectivo"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {venta.metodo_pago || "digital"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
