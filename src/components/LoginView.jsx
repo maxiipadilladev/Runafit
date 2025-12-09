@@ -1,24 +1,24 @@
-import React, { useState } from 'react';
-import { User, Lock, Mail, LogIn, Zap, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import bcrypt from 'bcryptjs';
-import Swal from 'sweetalert2';
+import React, { useState } from "react";
+import { User, Lock, Mail, LogIn, Zap, Eye, EyeOff } from "lucide-react";
+import { supabase } from "../lib/supabase";
+import bcrypt from "bcryptjs";
+import Swal from "sweetalert2";
 
 const LoginView = ({ onLogin }) => {
-  const [activeTab, setActiveTab] = useState('alumna');
-  const [dni, setDni] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [activeTab, setActiveTab] = useState("alumna");
+  const [dni, setDni] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleAlumnaLogin = async () => {
     if (dni.length < 7) {
       Swal.fire({
-        icon: 'warning',
-        title: 'DNI inválido',
-        text: 'Por favor ingresá un DNI válido (8 dígitos)',
-        confirmButtonColor: '#a855f7'
+        icon: "warning",
+        title: "DNI inválido",
+        text: "Por favor ingresá un DNI válido (8 dígitos)",
+        confirmButtonColor: "#a855f7",
       });
       return;
     }
@@ -27,45 +27,44 @@ const LoginView = ({ onLogin }) => {
     try {
       // Buscar usuario por DNI en Supabase
       const { data: usuario, error } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('dni', dni)
+        .from("usuarios")
+        .select("*")
+        .eq("dni", dni)
         .single();
 
       if (error || !usuario) {
         Swal.fire({
-          icon: 'error',
-          title: 'DNI no encontrado',
-          text: 'Consultá con el administrador del estudio',
-          confirmButtonColor: '#a855f7'
+          icon: "error",
+          title: "DNI no encontrado",
+          text: "Consultá con el administrador del estudio",
+          confirmButtonColor: "#a855f7",
         });
         return;
       }
 
       // Guardar sesión en localStorage
-      localStorage.setItem('usuario', JSON.stringify(usuario));
-      
+      localStorage.setItem("usuario", JSON.stringify(usuario));
+
       // Notificar al componente padre (App.jsx)
       if (onLogin) {
         onLogin(usuario);
       }
-      
+
       Swal.fire({
-        icon: 'success',
+        icon: "success",
         title: `¡Bienvenida ${usuario.nombre}!`,
-        text: 'Acceso confirmado',
+        text: "Acceso confirmado",
         timer: 1500,
         showConfirmButton: false,
-        confirmButtonColor: '#a855f7'
+        confirmButtonColor: "#a855f7",
       });
-      
     } catch (error) {
-      console.error('Error login:', error);
+      console.error("Error login:", error);
       Swal.fire({
-        icon: 'error',
-        title: 'Error de conexión',
-        text: 'No pudimos conectar con el servidor',
-        confirmButtonColor: '#a855f7'
+        icon: "error",
+        title: "Error de conexión",
+        text: "No pudimos conectar con el servidor",
+        confirmButtonColor: "#a855f7",
       });
     } finally {
       setLoading(false);
@@ -75,20 +74,20 @@ const LoginView = ({ onLogin }) => {
   const handleAdminLogin = async () => {
     if (!email || !password) {
       Swal.fire({
-        icon: 'warning',
-        title: 'Campos incompletos',
-        text: 'Por favor completá usuario y contraseña',
-        confirmButtonColor: '#a855f7'
+        icon: "warning",
+        title: "Campos incompletos",
+        text: "Por favor completá usuario y contraseña",
+        confirmButtonColor: "#a855f7",
       });
       return;
     }
 
     if (password.length < 6) {
       Swal.fire({
-        icon: 'warning',
-        title: 'Contraseña inválida',
-        text: 'La contraseña debe tener al menos 6 caracteres',
-        confirmButtonColor: '#a855f7'
+        icon: "warning",
+        title: "Contraseña inválida",
+        text: "La contraseña debe tener al menos 6 caracteres",
+        confirmButtonColor: "#a855f7",
       });
       return;
     }
@@ -97,17 +96,17 @@ const LoginView = ({ onLogin }) => {
     try {
       // Buscar admin en tabla admins
       const { data: admin, error } = await supabase
-        .from('admins')
-        .select('*')
-        .eq('telefono', email)
+        .from("admins")
+        .select("*")
+        .eq("telefono", email)
         .single();
 
       if (error || !admin) {
         Swal.fire({
-          icon: 'error',
-          title: 'Credenciales incorrectas',
-          text: 'Usuario o contraseña inválidos',
-          confirmButtonColor: '#a855f7'
+          icon: "error",
+          title: "Credenciales incorrectas",
+          text: "Usuario o contraseña inválidos",
+          confirmButtonColor: "#a855f7",
         });
         return;
       }
@@ -115,22 +114,22 @@ const LoginView = ({ onLogin }) => {
       // Verificar contraseña hasheada
       if (!admin.password) {
         Swal.fire({
-          icon: 'error',
-          title: 'Error de configuración',
-          text: 'Este usuario no tiene contraseña configurada',
-          confirmButtonColor: '#a855f7'
+          icon: "error",
+          title: "Error de configuración",
+          text: "Este usuario no tiene contraseña configurada",
+          confirmButtonColor: "#a855f7",
         });
         return;
       }
 
       const passwordMatch = await bcrypt.compare(password, admin.password);
-      
+
       if (!passwordMatch) {
         Swal.fire({
-          icon: 'error',
-          title: 'Contraseña incorrecta',
-          text: 'Verificá tu contraseña e intenta de nuevo',
-          confirmButtonColor: '#a855f7'
+          icon: "error",
+          title: "Contraseña incorrecta",
+          text: "Verificá tu contraseña e intenta de nuevo",
+          confirmButtonColor: "#a855f7",
         });
         return;
       }
@@ -138,30 +137,29 @@ const LoginView = ({ onLogin }) => {
       // Login exitoso
       const adminSinPassword = { ...admin };
       delete adminSinPassword.password; // No guardar password en localStorage
-      adminSinPassword.rol = 'admin'; // Agregar rol para compatibilidad
-      
-      localStorage.setItem('usuario', JSON.stringify(adminSinPassword));
-      
+      adminSinPassword.rol = "admin"; // Agregar rol para compatibilidad
+
+      localStorage.setItem("usuario", JSON.stringify(adminSinPassword));
+
       if (onLogin) {
         onLogin(adminSinPassword);
       }
-      
+
       Swal.fire({
-        icon: 'success',
+        icon: "success",
         title: `¡Bienvenida ${admin.nombre}!`,
-        text: 'Acceso admin autorizado',
+        text: "Acceso admin autorizado",
         timer: 1500,
         showConfirmButton: false,
-        confirmButtonColor: '#a855f7'
+        confirmButtonColor: "#a855f7",
       });
-      
     } catch (error) {
-      console.error('Error login admin:', error);
+      console.error("Error login admin:", error);
       Swal.fire({
-        icon: 'error',
-        title: 'Error de conexión',
-        text: 'No pudimos conectar con el servidor',
-        confirmButtonColor: '#a855f7'
+        icon: "error",
+        title: "Error de conexión",
+        text: "No pudimos conectar con el servidor",
+        confirmButtonColor: "#a855f7",
       });
     } finally {
       setLoading(false);
@@ -169,7 +167,7 @@ const LoginView = ({ onLogin }) => {
   };
 
   const handleKeyPress = (e, handler) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handler();
     }
   };
@@ -190,7 +188,9 @@ const LoginView = ({ onLogin }) => {
             <div className="text-5xl font-black text-white">RUNA</div>
             <div className="text-5xl font-black text-pink-300">FIT</div>
           </div>
-          <p className="text-white/80 text-lg">Reservas en línea | Powered by RunaTech</p>
+          <p className="text-white/80 text-lg">
+            Reservas en línea | Powered by RunaTech
+          </p>
         </div>
 
         {/* Card de Login */}
@@ -198,11 +198,11 @@ const LoginView = ({ onLogin }) => {
           {/* Tabs */}
           <div className="flex border-b border-gray-200">
             <button
-              onClick={() => setActiveTab('alumna')}
+              onClick={() => setActiveTab("alumna")}
               className={`flex-1 py-4 px-6 font-bold text-center transition-all ${
-                activeTab === 'alumna'
-                  ? 'bg-purple-50 text-purple-700 border-b-4 border-purple-600'
-                  : 'text-gray-500 hover:bg-gray-50'
+                activeTab === "alumna"
+                  ? "bg-purple-50 text-purple-700 border-b-4 border-purple-600"
+                  : "text-gray-500 hover:bg-gray-50"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -211,11 +211,11 @@ const LoginView = ({ onLogin }) => {
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('admin')}
+              onClick={() => setActiveTab("admin")}
               className={`flex-1 py-4 px-6 font-bold text-center transition-all ${
-                activeTab === 'admin'
-                  ? 'bg-purple-50 text-purple-700 border-b-4 border-purple-600'
-                  : 'text-gray-500 hover:bg-gray-50'
+                activeTab === "admin"
+                  ? "bg-purple-50 text-purple-700 border-b-4 border-purple-600"
+                  : "text-gray-500 hover:bg-gray-50"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -227,15 +227,20 @@ const LoginView = ({ onLogin }) => {
 
           {/* Contenido Tabs */}
           <div className="p-8">
-            {activeTab === 'alumna' ? (
+            {activeTab === "alumna" ? (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-2">¡Hola de nuevo! 👋</h3>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                    ¡Hola de nuevo! 👋
+                  </h3>
                   <p className="text-gray-600">Ingresá tu DNI para acceder</p>
                 </div>
 
                 <div>
-                  <label htmlFor="dni" className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label
+                    htmlFor="dni"
+                    className="block text-sm font-semibold text-gray-700 mb-2"
+                  >
                     Tu DNI (sin puntos)
                   </label>
                   <div className="relative">
@@ -246,14 +251,18 @@ const LoginView = ({ onLogin }) => {
                       id="dni"
                       type="text"
                       value={dni}
-                      onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      onChange={(e) =>
+                        setDni(e.target.value.replace(/\D/g, "").slice(0, 8))
+                      }
                       onKeyPress={(e) => handleKeyPress(e, handleAlumnaLogin)}
                       placeholder="12345678"
                       className="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-4 focus:ring-purple-100 transition-all outline-none"
                       maxLength={8}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Solo números, sin puntos ni espacios</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Solo números, sin puntos ni espacios
+                  </p>
                 </div>
 
                 <button
@@ -279,7 +288,9 @@ const LoginView = ({ onLogin }) => {
                     <Zap className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-purple-800">
                       <p className="font-semibold mb-1">Acceso Ultra Rápido</p>
-                      <p className="text-purple-700">Sin contraseñas. Solo tu DNI y listo.</p>
+                      <p className="text-purple-700">
+                        Sin contraseñas. Solo tu DNI y listo.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -287,12 +298,17 @@ const LoginView = ({ onLogin }) => {
             ) : (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-2">Panel Admin</h3>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">
+                    Panel Admin
+                  </h3>
                   <p className="text-gray-600">Acceso para administradores</p>
                 </div>
 
                 <div>
-                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-semibold text-gray-700 mb-2"
+                  >
                     Email
                   </label>
                   <div className="relative">
@@ -311,7 +327,10 @@ const LoginView = ({ onLogin }) => {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-semibold text-gray-700 mb-2"
+                  >
                     Contraseña
                   </label>
                   <div className="relative">
@@ -385,10 +404,15 @@ const LoginView = ({ onLogin }) => {
         {/* Footer */}
         <div className="text-center mt-8">
           <p className="text-white/60 text-sm">
-            ¿Problemas para ingresar?{' '}
-            <button className="text-white font-semibold hover:underline">
+            ¿Problemas para ingresar?{" "}
+            <a
+              href="https://wa.me/5493854834250?text=Hola,%20tengo%20problemas%20para%20ingresar%20a%20RunaFit"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-indigo-600 hover:text-indigo-500 underline decoration-indigo-200 decoration-2 underline-offset-2 hover:decoration-indigo-500 transition-all"
+            >
               Contactá soporte
-            </button>
+            </a>
           </p>
         </div>
       </div>

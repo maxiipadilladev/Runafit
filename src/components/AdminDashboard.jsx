@@ -581,12 +581,7 @@ const AdminDashboard = () => {
                               onClick={() =>
                                 handleWhatsApp(
                                   reserva.usuario.telefono,
-                                  `Hola ${
-                                    reserva.usuario.nombre
-                                  }, te escribo por tu reserva del ${formatFecha(
-                                    reserva.fecha,
-                                    reserva.hora
-                                  )} a las ${reserva.hora.slice(0, 5)}hs.`
+                                  `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
                                 )
                               }
                               className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
@@ -780,7 +775,7 @@ const AdminDashboard = () => {
                                   onClick={() =>
                                     handleWhatsApp(
                                       alumna.telefono,
-                                      `Hola ${alumna.nombre}!`
+                                      `Hola ${alumna.nombre}! 👋 Te escribo desde BodyFit`
                                     )
                                   }
                                   className="text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-lg"
@@ -850,7 +845,7 @@ const AdminDashboard = () => {
                                     onClick={() =>
                                       handleWhatsApp(
                                         alumna.telefono,
-                                        `Hola ${alumna.nombre}!`
+                                        `Hola ${alumna.nombre}! 👋 Te escribo desde BodyFit`
                                       )
                                     }
                                     className="bg-green-100 text-green-700 p-2 rounded-lg hover:bg-green-200 transition-colors"
