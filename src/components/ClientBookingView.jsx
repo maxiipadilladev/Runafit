@@ -379,10 +379,12 @@ const ClientBookingView = () => {
         return;
       }
 
-      // Filtrar créditos válidos en el código
+      // Filtrar créditos válidos para la fecha de la reserva
+      const selectedDate = new Date(selectedSlot.fecha + "T00:00:00");
       const creditoDisponible = creditosActivos?.find(
         (c) =>
-          c.creditos_restantes > 0 && new Date(c.fecha_vencimiento) > new Date()
+          c.creditos_restantes > 0 &&
+          new Date(c.fecha_vencimiento) >= selectedDate
       );
 
       if (!creditoDisponible) {
@@ -706,6 +708,16 @@ const ClientBookingView = () => {
 
       if (existing) {
         alreadyCount++;
+        continue;
+      }
+
+      // Validar vencimiento para esta fecha específica
+      const reservationDate = new Date(target.date + "T00:00:00");
+      const expirationDate = new Date(creditos.fecha_vencimiento);
+
+      if (expirationDate < reservationDate) {
+        // El crédito vence antes de esta fecha
+        failCount++;
         continue;
       }
 

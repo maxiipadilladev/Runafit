@@ -62,12 +62,15 @@ export const useCreditos = () => {
 
       if (customVencimiento) {
         // Usar fecha personalizada (forzar final del día para evitar problemas de timezone)
-        fechaVencimiento = new Date(customVencimiento);
-        fechaVencimiento.setHours(23, 59, 59);
+        // Agregamos T00:00:00 para asegurar que se interprete como local y no UTC
+        fechaVencimiento = new Date(customVencimiento + 'T00:00:00');
+        fechaVencimiento.setHours(23, 59, 59, 999);
       } else {
         // Calcular default (HOY + dias pack)
         fechaVencimiento = new Date(fechaCompra);
         fechaVencimiento.setDate(fechaVencimiento.getDate() + pack.duracion_dias);
+        // Forzar final del día siempre
+        fechaVencimiento.setHours(23, 59, 59, 999);
       }
 
       // 2. Verificar si ya tiene un pack ACTIVO con creditos
