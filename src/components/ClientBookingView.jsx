@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from "react";
 import {
   Calendar,
-  Clock,
-  Check,
-  X,
-  Trash2,
-  AlertCircle,
-  CreditCard,
-  Zap,
-  Settings,
-  Plus,
-  Minus,
   User,
-  Gift,
-  Instagram,
+  ShoppingBag,
+  X,
+  Check,
+  CloudLightningIcon as Lightning,
+  Zap,
+  Ticket,
+  Clock,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useCreditos } from "../hooks/useCreditos";
@@ -840,16 +836,33 @@ const ClientBookingView = () => {
           {/* Panel de Créditos */}
           {creditos ? (
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border-l-4 border-green-500">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <Gift size={16} className="text-green-600" />
-                  Tu Pack
-                </span>
-                <span className="text-xs text-gray-500">
-                  {creditos.dias_para_vencer > 0
-                    ? `Vence en ${creditos.dias_para_vencer} días`
-                    : "Vencido"}
-                </span>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex gap-3">
+                  <div className="bg-purple-100 p-2 rounded-lg">
+                    <Ticket className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800">Tu Pack</h3>
+                    <p className="text-sm text-gray-500">
+                      Vence en{" "}
+                      {Math.ceil(
+                        (new Date(creditos.fecha_vencimiento) - new Date()) /
+                          (1000 * 60 * 60 * 24)
+                      )}{" "}
+                      días
+                      <span className="text-xs text-gray-400 ml-1">
+                        (
+                        {new Date(
+                          creditos.fecha_vencimiento
+                        ).toLocaleDateString("es-AR", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                        )
+                      </span>
+                    </p>
+                  </div>
+                </div>
               </div>
               <p className="text-sm text-gray-700 mb-2">
                 {creditos.pack_nombre}
