@@ -777,9 +777,12 @@ const AdminDashboard = () => {
                       );
                     })
                     .map((alumna) => {
-                      // Buscar pack activo
+                      // Buscar pack activo (que no esté vencido)
                       const creditoActivo = alumna.creditos?.find(
-                        (c) => c.estado === "activo" && c.creditos_restantes > 0
+                        (c) =>
+                          c.estado === "activo" &&
+                          c.creditos_restantes > 0 &&
+                          new Date(c.fecha_vencimiento) > new Date()
                       );
 
                       return (
