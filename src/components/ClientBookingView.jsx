@@ -17,31 +17,104 @@ import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 
 const ClientBookingView = () => {
+  /* Estados para el Calendario */
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [calendarDays, setCalendarDays] = useState([]);
+
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [filterShift, setFilterShift] = useState("todos"); // todos, mañana, tarde
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [reservas, setReservas] = useState([]);
-  const [todasLasReservas, setTodasLasReservas] = useState([]); // Todas las reservas (incluye otras personas)
+  const [todasLasReservas, setTodasLasReservas] = useState([]);
   const [usuario, setUsuario] = useState(null);
   const [estudio, setEstudio] = useState(null);
-  const [scheduleAlumna, setScheduleAlumna] = useState([]); // Horarios personalizados de la alumna
+  const [scheduleAlumna, setScheduleAlumna] = useState([]);
   const [creditos, setCreditos] = useState(null);
   const [loading, setLoading] = useState(true);
   const { getCreditos, validarCreditos } = useCreditos();
 
   // Cargar usuario actual
   useEffect(() => {
-    window.scrollTo(0, 0); // Forzar scroll arriba al cargar
+    window.scrollTo(0, 0);
     const userStr = localStorage.getItem("usuario");
     if (userStr) {
       const user = JSON.parse(userStr);
       setUsuario(user);
       fetchEstudio(user.estudio_id);
-      fetchScheduleAlumna(user.id); // Cargar horarios personalizados
-      fetchCreditos(user.id); // Cargar créditos disponibles
+      fetchScheduleAlumna(user.id);
+      fetchCreditos(user.id);
       fetchReservas();
       fetchTodasLasReservas();
     }
   }, []);
+
+  // Calendar Effect
+  useEffect(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+
+    // Ajuste: Lun=0... Dom=6
+    let startPadding = startingDay - 1;
+    if (startPadding === -1) startPadding = 6;
+
+    const days = [];
+
+    for (let i = 0; i < startPadding; i++) {
+      days.push({ day: null });
+    }
+
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month, i);
+      days.push({ day: i, date: date });
+    }
+
+    setCalendarDays(days);
+  }, [currentMonth]);
+
+  const changeMonth = (offset) => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() + offset);
+    setCurrentMonth(newDate);
+  };
+
+  const getDailySlots = (dateObj) => {
+    if (!estudio) return { day: "", date: "", slots: [] };
+
+    // Obtener nombre del día (Lunes, Martes, etc.)
+    const dayName = dateObj.toLocaleDateString("es-AR", { weekday: "long" });
+    const dayNameCapitalized =
+      dayName.charAt(0).toUpperCase() + dayName.slice(1);
+
+    // Usar el método existente en GYM_CONSTANTS
+    const slots = GYM_CONSTANTS.getHorariosPorDia(dayNameCapitalized);
+
+    if (!slots || slots.length === 0) return { day: "", date: "", slots: [] };
+
+    const formattedDate =
+      dateObj.getDate() +
+      " " +
+      dateObj.toLocaleDateString("es-AR", { month: "short" });
+    const dateStr = dateObj.toLocaleDateString("es-AR", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
+    });
+
+    return {
+      day: dayNameCapitalized,
+      date: formattedDate,
+      fullDate: dateStr,
+      slots: slots,
+      isoDate: dateObj.toISOString().split("T")[0],
+    };
+  };
 
   const fetchEstudio = async (estudioId) => {
     try {
@@ -82,13 +155,11 @@ const ClientBookingView = () => {
     }
   };
 
-  // Cargar reservas del usuario
   useEffect(() => {
     if (!usuario) return;
 
     fetchReservas();
 
-    // Suscripción a cambios en tiempo real
     const subscription = supabase
       .channel("reservas-changes")
       .on(
@@ -108,13 +179,7 @@ const ClientBookingView = () => {
 
   useEffect(() => {
     fetchTodasLasReservas();
-  }, []);
 
-  // Cargar todas las reservas (de todos los usuarios) para mostrar disponibilidad
-  useEffect(() => {
-    fetchTodasLasReservas();
-
-    // Suscripción a cambios en todas las reservas
     const subscription = supabase
       .channel("todas-reservas-changes")
       .on(
@@ -157,7 +222,7 @@ const ClientBookingView = () => {
   const fetchTodasLasReservas = async () => {
     const { data } = await supabase
       .from("reservas")
-      .select("fecha, hora, cama_id, estado")
+      .select("id, fecha, hora, cama_id, estado, usuario_id")
       .gte("fecha", new Date().toISOString().split("T")[0])
       .neq("estado", "cancelada");
 
@@ -166,107 +231,14 @@ const ClientBookingView = () => {
     }
   };
 
-  // Generar horarios dinámicos basados en los horarios personalizados de la alumna
-  const generateSchedule = () => {
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-
-    const proximosDias = [];
-    const diasSemanaMap = [
-      "domingo",
-      "lunes",
-      "martes",
-      "miércoles",
-      "jueves",
-      "viernes",
-      "sábado",
-    ];
-    const mesesMap = [
-      "Ene",
-      "Feb",
-      "Mar",
-      "Abr",
-      "May",
-      "Jun",
-      "Jul",
-      "Ago",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dic",
-    ];
-
-    for (let i = 0; i < 7; i++) {
-      const fecha = new Date(startDate);
-      fecha.setDate(startDate.getDate() + i);
-
-      const diaIndex = fecha.getDay();
-      const diaNombre = diasSemanaMap[diaIndex];
-      const diaCapitalizado =
-        diaNombre.charAt(0).toUpperCase() + diaNombre.slice(1);
-
-      // Filtrar días que no abre el gimnasio (Solo Lun, Mie, Vie según config)
-      if (!GYM_CONSTANTS.DIAS_Apertura.includes(diaCapitalizado)) {
-        continue;
-      }
-
-      // 1. Prioridad: Horarios Específicos (scheduleAlumna)
-      // Si la alumna tiene horarios puntuales asignados, usamos ESOS y solo ESOS.
-      const diaConfig = scheduleAlumna.find(
-        (s) => s.dia_semana.toLowerCase() === diaNombre.toLowerCase()
-      );
-
-      let slots = [];
-
-      // 2. Lógica de selección de Slots
-      // Regla de Oro: Si tiene scheduleAlumna (horarios fijos), el turno general (Mañana/Tarde) SE IGNORA.
-      const tieneHorariosFijos = scheduleAlumna.length > 0;
-
-      if (diaConfig) {
-        // Caso A: Tiene horario fijo HOY -> Se muestra solo ese.
-        slots = [diaConfig.hora.slice(0, 5)];
-      } else if (tieneHorariosFijos) {
-        // Caso B: Tiene horario fijo OTRO día, pero HOY no.
-        // Como tiene horarios fijos, NO aplicamos el general. Hoy no se muestra nada.
-        slots = [];
-      } else {
-        // Caso C: No tiene ningún horario fijo asignado.
-        // Recién acá aplica el "Turno General" (Mañana o Tarde).
-        if (usuario?.turno === "mañana") {
-          slots = GYM_CONSTANTS.TURNOS.MAÑANA.horarios;
-        } else if (usuario?.turno === "tarde") {
-          slots = GYM_CONSTANTS.TURNOS.TARDE.horarios;
-        } else {
-          slots = GYM_CONSTANTS.HORARIOS_VALIDOS;
-        }
-
-        // 3. Filtrar slots según disponibilidad real del día (ej: Martes no tiene tarde)
-        const horariosValidosDia = GYM_CONSTANTS.getHorariosPorDia(diaNombre);
-        slots = slots.filter((slot) => horariosValidosDia.includes(slot));
-      }
-
-      // Si no hay slots para mostrar (ej: Caso B), saltamos el día
-      if (slots.length === 0) continue;
-
-      proximosDias.push({
-        day: diaCapitalizado,
-        date: `${fecha.getDate()} ${mesesMap[fecha.getMonth()]}`,
-        slots: slots,
-        fullDate: fecha,
-      });
-
-      if (proximosDias.length >= 7) break; // Mostrar solo una semana "hábil"
-    }
-
-    return proximosDias;
+  const getShift = (timeStr) => {
+    const hour = parseInt(timeStr.split(":")[0]);
+    return hour < 14 ? "mañana" : "tarde";
   };
-
-  const schedule = generateSchedule();
 
   const beds = [1, 2, 3, 4, 5, 6];
 
-  const handleBedClick = async (day, date, time) => {
-    // NUEVA LÓGICA: Validar créditos antes de intentar reservar
+  const handleBedClick = async (day, date, time, fechaISO) => {
     const validacion = await validarCreditos(usuario.id);
 
     if (!validacion.disponible) {
@@ -279,29 +251,10 @@ const ClientBookingView = () => {
       return;
     }
 
-    // Convertir fecha legible a formato ISO
-    const [dayNum, month] = date.split(" ");
-    const year = new Date().getFullYear();
-    const monthNum =
-      {
-        Dic: 12,
-        Ene: 1,
-        Feb: 2,
-        Mar: 3,
-        Abr: 4,
-        May: 5,
-        Jun: 6,
-        Jul: 7,
-        Ago: 8,
-        Sep: 9,
-        Oct: 10,
-        Nov: 11,
-      }[month] || 12;
-    const fechaISO = `${year}-${String(monthNum).padStart(2, "0")}-${String(
-      dayNum
-    ).padStart(2, "0")}`;
+    // Ya viene fechaISO
+    // LOADING STATE COULD BE ADDED HERE IF NEEDED
+    // setSelectedSlot({ day, date, time, bed: null, fecha: fechaISO }); // REMOVING PREMATURE STATE update
 
-    // Verificar si el usuario ya tiene una reserva en ese horario
     const { data: misReservasEnEseHorario } = await supabase
       .from("reservas")
       .select("*")
@@ -320,7 +273,6 @@ const ClientBookingView = () => {
       return;
     }
 
-    // Encontrar la primera cama disponible
     const { data: reservasEnEseHorario } = await supabase
       .from("reservas")
       .select("cama_id")
@@ -328,10 +280,7 @@ const ClientBookingView = () => {
       .eq("hora", time + ":00")
       .neq("estado", "cancelada");
 
-    const beds = [1, 2, 3, 4, 5, 6];
     const camasOcupadas = reservasEnEseHorario?.map((r) => r.cama_id) || [];
-
-    // Filtrar camas disponibles
     const camasDisponibles = beds.filter((bed) => !camasOcupadas.includes(bed));
 
     if (camasDisponibles.length === 0) {
@@ -344,7 +293,6 @@ const ClientBookingView = () => {
       return;
     }
 
-    // Selección aleatoria
     const randomIndex = Math.floor(Math.random() * camasDisponibles.length);
     const camaDisponible = camasDisponibles[randomIndex];
 
@@ -354,8 +302,12 @@ const ClientBookingView = () => {
   const confirmBooking = async () => {
     if (!usuario || !selectedSlot) return;
 
+    // Guardar referencia local para evitar problemas de estado
+    const bedToBook = selectedSlot.bed;
+    const timeToBook = selectedSlot.time;
+    const dateToBook = selectedSlot.fecha;
+
     try {
-      // Obtener créditos disponibles (activos, no vencidos, con créditos restantes)
       const { data: creditosActivos, error: errorCredito } = await supabase
         .from("creditos_alumna")
         .select("id, creditos_restantes, fecha_vencimiento")
@@ -375,7 +327,6 @@ const ClientBookingView = () => {
         return;
       }
 
-      // Filtrar créditos válidos para la fecha de la reserva
       const selectedDate = new Date(selectedSlot.fecha + "T00:00:00");
       const creditoDisponible = creditosActivos?.find(
         (c) =>
@@ -396,14 +347,14 @@ const ClientBookingView = () => {
 
       const creditoId = creditoDisponible.id;
 
-      // Verificar nuevamente disponibilidad JUSTO antes de insertar (race condition)
       const { data: verificacionFinal, error: errorVerificacion } =
         await supabase
           .from("reservas")
           .select("cama_id")
-          .eq("fecha", selectedSlot.fecha)
-          .eq("hora", selectedSlot.time + ":00")
-          .eq("cama_id", selectedSlot.bed)
+          .select("cama_id")
+          .eq("fecha", dateToBook)
+          .eq("hora", timeToBook + ":00")
+          .eq("cama_id", bedToBook)
           .neq("estado", "cancelada")
           .maybeSingle();
 
@@ -419,14 +370,13 @@ const ClientBookingView = () => {
         return;
       }
 
-      // Insertar reserva con credito_id
       const { error } = await supabase.from("reservas").insert({
         usuario_id: usuario.id,
-        fecha: selectedSlot.fecha,
-        hora: selectedSlot.time + ":00",
-        cama_id: selectedSlot.bed,
+        fecha: dateToBook,
+        hora: timeToBook + ":00",
+        cama_id: bedToBook,
         credito_id: creditoId,
-        estado: "confirmada", // Estado cambiado a confirmada (descuento automático)
+        estado: "confirmada",
       });
 
       if (error) {
@@ -454,13 +404,12 @@ const ClientBookingView = () => {
       Swal.fire({
         icon: "success",
         title: "¡Reserva confirmada!",
-        html: `<p>Cama <strong>${selectedSlot.bed}</strong> - <strong>${selectedSlot.time}hs</strong></p>`,
+        html: `<p>Cama <strong>${bedToBook}</strong> - <strong>${timeToBook}hs</strong></p>`,
         confirmButtonColor: "#a855f7",
       });
 
       setSelectedSlot(null);
 
-      // Actualizar listas de reservas y créditos
       await fetchReservas();
       await fetchTodasLasReservas();
       await fetchCreditos(usuario.id);
@@ -477,11 +426,23 @@ const ClientBookingView = () => {
   };
 
   const cancelBooking = async (reservaId) => {
-    // Encontrar los detalles de la reserva
-    const reserva = reservas.find((r) => r.id === reservaId);
-    if (!reserva) return;
+    let reserva = reservas.find((r) => r.id === reservaId);
 
-    // Verificar si la cancelación es con menos de 2 horas de anticipación
+    // Si no está en el estado local, buscarla en DB (robustez)
+    if (!reserva) {
+      const { data } = await supabase
+        .from("reservas")
+        .select("*")
+        .eq("id", reservaId)
+        .single();
+      if (data) reserva = data;
+    }
+
+    if (!reserva) {
+      console.error("Reserva no encontrada para cancelar", reservaId);
+      return;
+    }
+
     const fechaReserva = new Date(reserva.fecha + "T" + reserva.hora);
     const ahora = new Date();
     const horasRestantes = (fechaReserva - ahora) / (1000 * 60 * 60);
@@ -529,7 +490,6 @@ const ClientBookingView = () => {
 
     if (!result.isConfirmed) return;
 
-    // 1. Obtener estado actual del crédito (para comparar después)
     let creditBefore = null;
     if (reserva.credito_id) {
       const { data } = await supabase
@@ -540,20 +500,14 @@ const ClientBookingView = () => {
       creditBefore = data ? data.creditos_restantes : 0;
     }
 
-    // 2. Cambiar estado a 'cancelada' (Esto dispara el Trigger si corresponde)
     const { error } = await supabase
       .from("reservas")
       .update({ estado: "cancelada" })
       .eq("id", reservaId);
 
-    if (error) {
-      // Manejar error de cancelación
-      return;
-    }
+    if (error) return;
 
-    // 3. Verificación Inteligente: ¿El trigger devolvió el crédito?
     if (reserva.credito_id && creditBefore !== null) {
-      // Esperamos un momento para que el trigger DB termine
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       const { data: creditAfterData } = await supabase
@@ -566,16 +520,12 @@ const ClientBookingView = () => {
         ? creditAfterData.creditos_restantes
         : 0;
 
-      // Si el saldo NO cambió (Trigger falló o no aplicó), devolvemos manualmente
       if (creditAfter === creditBefore) {
-        console.log("Trigger no aplicó. Devolviendo crédito manualmente...");
         try {
-          // Intento seguro con RPC
           const { error: rpcError } = await supabase.rpc("increment_creditos", {
             row_id: reserva.credito_id,
           });
 
-          // Fallback manual si no hay RPC
           if (rpcError) {
             await supabase
               .from("creditos_alumna")
@@ -588,12 +538,9 @@ const ClientBookingView = () => {
         } catch (err) {
           console.error("Error manual refund:", err);
         }
-      } else {
-        console.log("Trigger funcionó correctamente. Saldo actualizado.");
       }
     }
 
-    // 4. Feedback al usuario
     Swal.fire({
       icon: "success",
       title: "Turno cancelado",
@@ -603,195 +550,11 @@ const ClientBookingView = () => {
       confirmButtonColor: "#a855f7",
     });
 
-    // Actualizar UI
     setTimeout(async () => {
       await fetchReservas();
       await fetchTodasLasReservas();
       if (usuario) fetchCreditos(usuario.id);
     }, 500);
-  };
-
-  const handleReserveFullMonth = async () => {
-    // 1. Validaciones Iniciales
-    if (!usuario) return;
-    if (scheduleAlumna.length === 0) {
-      Swal.fire({
-        icon: "info",
-        title: "Sin horarios fijos",
-        text: "No tenés horarios fijos asignados para usar esta función.",
-        confirmButtonColor: "#3b82f6",
-      });
-      return;
-    }
-
-    if (!creditos || creditos.creditos_restantes === 0) {
-      Swal.fire({
-        icon: "warning",
-        title: "Sin créditos",
-        text: "Necesitás tener créditos disponibles en tu pack.",
-        confirmButtonColor: "#fbbf24",
-      });
-      return;
-    }
-
-    // 2. Confirmación
-    const confirm = await Swal.fire({
-      icon: "question",
-      title: "¿Reservar mes completo?",
-      text: `Intentaremos reservar todas tus clases del próximo mes en tus horarios fijos (${scheduleAlumna
-        .map((s) => `${s.dia_semana} ${s.hora}`)
-        .join(", ")}).`,
-      showCancelButton: true,
-      confirmButtonText: "Sí, reservar todo",
-      cancelButtonText: "Cancelar",
-      confirmButtonColor: "#a855f7",
-    });
-
-    if (!confirm.isConfirmed) return;
-
-    setLoading(true);
-
-    // 3. Generar fechas objetivo (próximos 30 días)
-    const targets = [];
-    const today = new Date();
-    const limitDate = new Date();
-    limitDate.setDate(limitDate.getDate() + 30); // Límite 30 días
-
-    // Loop día por día
-    for (let d = new Date(today); d <= limitDate; d.setDate(d.getDate() + 1)) {
-      const dayName = d
-        .toLocaleDateString("es-AR", { weekday: "long" })
-        .toLowerCase();
-
-      // ¿Es un día de su horario fijo?
-      const schedules = scheduleAlumna.filter(
-        (s) => s.dia_semana.toLowerCase() === dayName
-      );
-
-      for (const sch of schedules) {
-        const dateStr = d.toISOString().split("T")[0];
-        const timeStr = sch.hora.slice(0, 5) + ":00"; // asegurar formato HH:MM:00
-
-        // Evitar reservar hoy/pasado si ya pasó la hora (opcional, simplificado para hoy)
-
-        targets.push({
-          date: dateStr,
-          time: timeStr,
-          originalHora: sch.hora,
-        });
-      }
-    }
-
-    // 4. Procesar Reservas
-    let successCount = 0;
-    let failCount = 0;
-    let alreadyCount = 0;
-    let currentCredits = creditos.creditos_restantes;
-
-    for (const target of targets) {
-      if (currentCredits <= 0) break; // Se acabaron los créditos
-
-      // A. Chequear si ya tengo reserva ese día/hora
-      // (Podríamos revisar el state 'reservas' local, pero para estar seguros consultamos DB o "todasLasReservas" si está actualizado)
-      // Usamos una verificación simple con supabase para evitar duplicados reales
-      const { data: existing } = await supabase
-        .from("reservas")
-        .select("id")
-        .eq("fecha", target.date)
-        .eq("usuario_id", usuario.id)
-        .eq("estado", "confirmada") // Solo activas
-        .maybeSingle();
-
-      if (existing) {
-        alreadyCount++;
-        continue;
-      }
-
-      // Validar vencimiento para esta fecha específica
-      const reservationDate = new Date(target.date + "T00:00:00");
-      const expirationDate = new Date(creditos.fecha_vencimiento);
-
-      if (expirationDate < reservationDate) {
-        // El crédito vence antes de esta fecha
-        failCount++;
-        continue;
-      }
-
-      // B. Buscar Cama Libre
-      // Necesitamos saber qué camas están ocupadas en esa fecha/hora
-      const { data: busyBeds } = await supabase
-        .from("reservas")
-        .select("cama_id")
-        .eq("fecha", target.date)
-        .eq("hora", target.time)
-        .neq("estado", "cancelada");
-
-      const busyBedIds = busyBeds ? busyBeds.map((b) => b.cama_id) : [];
-
-      // Asumimos 8 camas (ids 1 al 8) o consultamos tabla camas. Por performance, hardcodeamos o leemos del state si existe.
-      // Mejor leer tabla camas una vez al inicio, pero aquí haremos un loop simple de 1 a 6 (según chat anterior hay 6 reformers)
-      let freeBedId = null;
-
-      const ALL_BEDS = [1, 2, 3, 4, 5, 6];
-      const availableBeds = ALL_BEDS.filter((bed) => !busyBedIds.includes(bed));
-
-      if (availableBeds.length > 0) {
-        // Selección aleatoria
-        const randomIndex = Math.floor(Math.random() * availableBeds.length);
-        freeBedId = availableBeds[randomIndex];
-      }
-
-      if (!freeBedId) {
-        failCount++; // No hay camas
-        continue;
-      }
-
-      // C. Reservar
-      const { error } = await supabase.from("reservas").insert({
-        usuario_id: usuario.id,
-        fecha: target.date,
-        hora: target.time,
-        cama_id: freeBedId,
-        credito_id: creditos.id, // Asumimos el credito actual (el hook getCreditos trae el activo)
-        estado: "confirmada",
-      });
-
-      if (!error) {
-        // Decrementar localmente para el loop
-        currentCredits--;
-        // Decrementar en DB (el trigger lo haría, pero aquí quizás falle igual que antes, mejor RPC manual si quisiéramos perfección)
-        // IMPORTANTE: Al ser inserción nueva, el trigger DEBERÍA funcionar bien para descontar.
-        // Confiamos en el trigger de INSERT para descuento.
-        successCount++;
-      } else {
-        failCount++;
-      }
-    }
-
-    setLoading(false);
-
-    // 5. Reporte
-    Swal.fire({
-      icon: successCount > 0 ? "success" : "info",
-      title: "Proceso finalizado",
-      html: `<p>Se reservaron <strong>${successCount}</strong> clases.</p>
-               ${
-                 failCount > 0
-                   ? `<p class="text-red-500">No se pudieron reservar ${failCount} (sin cupo).</p>`
-                   : ""
-               }
-               ${
-                 alreadyCount > 0
-                   ? `<p class="text-gray-500">Ya tenías ${alreadyCount} reservas hechas.</p>`
-                   : ""
-               }`,
-      confirmButtonColor: "#a855f7",
-    });
-
-    // Refrescar todo
-    await fetchReservas();
-    await fetchTodasLasReservas();
-    if (usuario) fetchCreditos(usuario.id);
   };
 
   if (loading) {
@@ -807,16 +570,6 @@ const ClientBookingView = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-      {/* Panel Demo comentado - descomentar si necesitas testear estados
-      <button
-        onClick={() => setShowDemoPanel(!showDemoPanel)}
-        className="fixed top-2 right-4 z-50 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
-        title="Demo Controls"
-      >
-        <Settings className="w-5 h-5" />
-      </button>
-      */}
-
       {/* Header */}
       <div className="max-w-md mx-auto mb-6">
         <div className="bg-white rounded-2xl shadow-lg p-6">
@@ -835,42 +588,32 @@ const ClientBookingView = () => {
 
           {/* Panel de Créditos */}
           {creditos ? (
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border-l-4 border-green-500">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex gap-3">
-                  <div className="bg-purple-100 p-2 rounded-lg">
-                    <Ticket className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-800">Tu Pack</h3>
-                    <p className="text-sm text-gray-500">
-                      Vence en{" "}
-                      {Math.ceil(
-                        (new Date(creditos.fecha_vencimiento) - new Date()) /
-                          (1000 * 60 * 60 * 24)
-                      )}{" "}
-                      días
-                      <span className="text-xs text-gray-400 ml-1">
-                        (
-                        {new Date(
-                          creditos.fecha_vencimiento
-                        ).toLocaleDateString("es-AR", {
-                          day: "numeric",
-                          month: "short",
-                        })}
-                        )
-                      </span>
-                    </p>
-                  </div>
+            <div className="bg-white border border-green-100 rounded-xl p-3 shadow-sm flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-50 p-2 rounded-full">
+                  <Ticket className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800 text-sm leading-tight">
+                    {creditos.pack_nombre}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Vence:{" "}
+                    {new Date(creditos.fecha_vencimiento).toLocaleDateString(
+                      "es-AR",
+                      { day: "numeric", month: "short" }
+                    )}
+                  </p>
                 </div>
               </div>
-              <p className="text-sm text-gray-700 mb-2">
-                {creditos.pack_nombre}
-              </p>
-              <div className="flex items-center justify-between">
-                <div className="flex-1 bg-gray-200 rounded-full h-2 mr-3 overflow-hidden">
+
+              <div className="text-right">
+                <div className="text-sm font-bold text-green-600">
+                  {creditos.creditos_restantes}/{creditos.creditos_totales}
+                </div>
+                <div className="w-16 h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-green-400 to-emerald-500 h-full transition-all"
+                    className="h-full bg-green-500"
                     style={{
                       width: `${
                         (creditos.creditos_restantes /
@@ -880,21 +623,7 @@ const ClientBookingView = () => {
                     }}
                   />
                 </div>
-                <span className="text-lg font-bold text-green-600">
-                  {creditos.creditos_restantes}/{creditos.creditos_totales}
-                </span>
               </div>
-
-              {/* Botón Reservar Mes Automático */}
-              {scheduleAlumna.length > 0 && creditos.creditos_restantes > 0 && (
-                <button
-                  onClick={handleReserveFullMonth}
-                  className="w-full mt-4 bg-white/50 hover:bg-white/80 text-green-800 font-semibold py-2 px-4 rounded-lg border border-green-200 shadow-sm transition-all flex items-center justify-center gap-2 text-sm"
-                >
-                  <Zap className="w-4 h-4 text-green-600" />
-                  Reservar Mes Completo
-                </button>
-              )}
             </div>
           ) : (
             <div className="bg-yellow-50 rounded-lg p-4 border-l-4 border-yellow-500">
@@ -980,103 +709,247 @@ const ClientBookingView = () => {
         </div>
       )}
 
-      {/* Grilla de Turnos */}
-      <div className="max-w-md mx-auto space-y-4">
-        {schedule.map((day) => (
-          <div
-            key={`${day.day}-${day.date}`}
-            className="bg-white rounded-2xl shadow-lg overflow-hidden"
+      {/* Calendario */}
+      <div className="max-w-md mx-auto bg-white rounded-2xl shadow-lg overflow-hidden mb-6">
+        {/* Header Calendario */}
+        <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 flex justify-between items-center text-white">
+          <button
+            onClick={() => changeMonth(-1)}
+            className="p-1 hover:bg-white/20 rounded-full"
           >
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4">
-              <h3 className="text-white font-bold text-lg">{day.day}</h3>
-              <p className="text-purple-100 text-sm">{day.date}</p>
-            </div>
+            <span className="text-xl">←</span>
+          </button>
+          <h2 className="font-bold text-lg capitalize">
+            {currentMonth.toLocaleDateString("es-AR", {
+              month: "long",
+              year: "numeric",
+            })}
+          </h2>
+          <button
+            onClick={() => changeMonth(1)}
+            className="p-1 hover:bg-white/20 rounded-full"
+          >
+            <span className="text-xl">→</span>
+          </button>
+        </div>
 
-            <div className="p-4 space-y-4">
-              {day.slots.map((time) => {
-                // Convertir fecha a formato ISO
-                const [dayNum, month] = day.date.split(" ");
-                const year = new Date().getFullYear();
-                const monthNum =
-                  {
-                    Dic: 12,
-                    Ene: 1,
-                    Feb: 2,
-                    Mar: 3,
-                    Abr: 4,
-                    May: 5,
-                    Jun: 6,
-                    Jul: 7,
-                    Ago: 8,
-                    Sep: 9,
-                    Oct: 10,
-                    Nov: 11,
-                  }[month] || 12;
-                const fechaISO = `${year}-${String(monthNum).padStart(
-                  2,
-                  "0"
-                )}-${String(dayNum).padStart(2, "0")}`;
+        {/* Días Semana */}
+        <div className="grid grid-cols-7 text-center p-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <div>Lu</div>
+          <div>Ma</div>
+          <div>Mi</div>
+          <div>Ju</div>
+          <div>Vi</div>
+          <div>Sa</div>
+          <div>Do</div>
+        </div>
 
-                // Verificar si tengo una reserva en este horario
-                const miReservaEnEsteHorario = reservas.find((r) => {
-                  return r.fecha === fechaISO && r.hora.slice(0, 5) === time;
-                });
+        {/* Grid Días */}
+        <div className="grid grid-cols-7 p-2 gap-1">
+          {calendarDays.map((d, i) => {
+            if (!d.day) return <div key={i}></div>;
 
-                // Contar cuántas camas están ocupadas
-                const camasOcupadas = todasLasReservas.filter((r) => {
-                  return r.fecha === fechaISO && r.hora.slice(0, 5) === time;
-                }).length;
+            const isSelected =
+              selectedDate &&
+              d.date.getDate() === selectedDate.getDate() &&
+              d.date.getMonth() === selectedDate.getMonth();
 
-                const camasDisponibles = 6 - camasOcupadas;
+            const isToday =
+              new Date().getDate() === d.date.getDate() &&
+              new Date().getMonth() === d.date.getMonth() &&
+              new Date().getFullYear() === d.date.getFullYear();
 
-                return (
-                  <div
-                    key={time}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"
+            // Highlight user reservations
+            const hasReservation = reservas.some((r) => {
+              const resDate = new Date(r.fecha + "T00:00:00");
+              return (
+                resDate.getDate() === d.date.getDate() &&
+                resDate.getMonth() === d.date.getMonth()
+              );
+            });
+
+            return (
+              <button
+                key={i}
+                onClick={() => setSelectedDate(d.date)}
+                className={`
+                              h-10 w-10 mx-auto flex items-center justify-center rounded-full text-sm font-medium transition-all
+                              ${
+                                isSelected
+                                  ? "bg-purple-600 text-white shadow-md transform scale-105"
+                                  : "hover:bg-purple-50 text-gray-700"
+                              }
+                              ${
+                                isToday && !isSelected
+                                  ? "border-2 border-purple-400 font-bold"
+                                  : ""
+                              }
+                              }
+                              ${
+                                hasReservation && !isSelected
+                                  ? "border-2 border-purple-500 text-purple-700 font-bold"
+                                  : ""
+                              }
+                          `}
+              >
+                {d.day}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lista de Horarios para el día seleccionado */}
+      <div className="max-w-md mx-auto space-y-4">
+        {selectedDate &&
+          (() => {
+            // Calcular datos del día
+            const dateObj = selectedDate;
+            const slotsData = getDailySlots(dateObj);
+
+            if (!slotsData || slotsData.slots.length === 0) {
+              return (
+                <div className="text-center py-8 bg-white rounded-xl shadow-sm">
+                  <p className="text-gray-500">
+                    No hay horarios disponibles para este día.
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Intenta seleccionar otro día en el calendario.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden animate-fade-in">
+                <div className="bg-gray-50 border-b border-gray-100 p-4 text-center">
+                  <h3 className="text-lg font-bold text-gray-800 capitalize">
+                    {slotsData.day} {slotsData.date}
+                  </h3>
+                </div>
+
+                {/* Filtro Mañana/Tarde */}
+                <div className="flex justify-center gap-2 p-2 bg-gray-50">
+                  <button
+                    onClick={() => setFilterShift("todos")}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                      filterShift === "todos"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    }`}
                   >
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        <span className="font-bold text-gray-800">{time}</span>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        {camasOcupadas}/6 camas ocupadas
-                      </p>
-                    </div>
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setFilterShift("mañana")}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                      filterShift === "mañana"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    }`}
+                  >
+                    Mañana
+                  </button>
+                  <button
+                    onClick={() => setFilterShift("tarde")}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                      filterShift === "tarde"
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    }`}
+                  >
+                    Tarde
+                  </button>
+                </div>
 
-                    {miReservaEnEsteHorario ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="bg-green-100 text-green-700 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                          <Check className="w-4 h-4" />
-                          Cama #{miReservaEnEsteHorario.cama_id}
-                        </div>
-                        <button
-                          onClick={() =>
-                            cancelBooking(miReservaEnEsteHorario.id)
-                          }
-                          className="text-red-600 hover:text-red-800 text-xs font-semibold"
+                <div className="p-4 space-y-4">
+                  {slotsData.slots
+                    .filter((time) => {
+                      if (filterShift === "todos") return true;
+                      return getShift(time) === filterShift;
+                    })
+                    .map((time) => {
+                      const fechaISO = slotsData.isoDate;
+
+                      const reservasSlot = todasLasReservas.filter(
+                        (r) =>
+                          r.fecha === fechaISO &&
+                          r.hora.slice(0, 5) === time &&
+                          r.estado !== "cancelada"
+                      );
+
+                      const ocupadas = reservasSlot.length;
+                      const capacidad = 6;
+                      const isFull = ocupadas >= capacidad;
+
+                      const miReserva = reservasSlot.find(
+                        (r) => r.usuario_id === usuario?.id
+                      );
+
+                      const slotDate = new Date(`${fechaISO}T${time}:00`);
+                      const now = new Date();
+                      const isPast = slotDate < now;
+
+                      if (isPast && !miReserva) return null;
+
+                      return (
+                        <div
+                          key={time}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-purple-200 transition-colors"
                         >
-                          Cancelar
-                        </button>
-                      </div>
-                    ) : camasDisponibles > 0 ? (
-                      <button
-                        onClick={() => handleBedClick(day.day, day.date, time)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-md hover:shadow-lg"
-                      >
-                        Reservar
-                      </button>
-                    ) : (
-                      <div className="bg-gray-200 text-gray-500 px-3 py-2 rounded-lg text-sm font-bold">
-                        Completo
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+                          <div className="flex items-center gap-4">
+                            <div className="bg-white p-2 rounded-lg shadow-sm font-bold text-gray-700 font-mono">
+                              {time}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-sm font-medium ${
+                                    isFull ? "text-red-500" : "text-green-600"
+                                  }`}
+                                >
+                                  {ocupadas}/{capacidad} camas
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {miReserva ? (
+                            <button
+                              onClick={() => cancelBooking(miReserva.id)}
+                              className="bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          ) : isFull ? (
+                            <button
+                              disabled
+                              className="bg-gray-200 text-gray-400 px-4 py-2 rounded-lg text-sm font-bold cursor-not-allowed"
+                            >
+                              Lleno
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                handleBedClick(
+                                  slotsData.day,
+                                  slotsData.date,
+                                  time,
+                                  fechaISO
+                                )
+                              }
+                              className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all hover:shadow-md"
+                            >
+                              Reservar
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            );
+          })()}
       </div>
 
       {/* Footer Branding */}

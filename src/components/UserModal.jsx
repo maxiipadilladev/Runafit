@@ -17,12 +17,7 @@ export const UserModal = ({
     nombre: "",
     telefono: "",
     estudio_id: estudioId ? estudioId.toString() : "",
-    turno: "mañana",
-  });
-  const [schedules, setSchedules] = useState([]);
-  const [newSchedule, setNewSchedule] = useState({
-    dia_semana: "lunes",
-    hora: "08:00",
+    turno: "",
   });
 
   // Cargar datos si es edición
@@ -35,8 +30,6 @@ export const UserModal = ({
         estudio_id: userToEdit.estudio_id.toString(),
         turno: userToEdit.turno || "mañana",
       });
-      // Fetch existing schedules if editing
-      fetchUserSchedules(userToEdit.id);
     } else {
       // Reset si es nuevo
       setFormData({
@@ -44,42 +37,10 @@ export const UserModal = ({
         nombre: "",
         telefono: "",
         estudio_id: estudioId ? estudioId.toString() : "",
-        turno: "mañana",
+        turno: "",
       });
-      setSchedules([]);
     }
   }, [userToEdit, estudioId, isOpen]);
-
-  const fetchUserSchedules = async (userId) => {
-    const { data } = await supabase
-      .from("schedule_alumnas")
-      .select("*")
-      .eq("usuario_id", userId);
-    if (data) setSchedules(data);
-  };
-
-  const saveSchedulesToDB = async (usuarioId) => {
-    if (schedules.length === 0) return;
-
-    // Primero borrar anteriores si es edición (estrategia simple)
-    if (userToEdit) {
-      await supabase
-        .from("schedule_alumnas")
-        .delete()
-        .eq("usuario_id", usuarioId);
-    }
-
-    // Insertar nuevos
-    const inserts = schedules.map((s) => ({
-      usuario_id: usuarioId,
-      dia_semana: s.dia_semana,
-      hora: s.hora,
-      cama_preferida: null,
-    }));
-
-    const { error } = await supabase.from("schedule_alumnas").insert(inserts);
-    if (error) console.error("Error guardando horarios:", error);
-  };
 
   const handleSubmit = async () => {
     if (!formData.dni || !formData.nombre || !formData.telefono) {
@@ -111,14 +72,12 @@ export const UserModal = ({
           .update({
             nombre: formData.nombre,
             telefono: formData.telefono,
-            turno: formData.turno,
+            turno: formData.turno || null,
             dni: formData.dni, // DNI también editable por si hubo error
           })
           .eq("id", userToEdit.id);
 
         if (error) throw error;
-
-        await saveSchedulesToDB(userToEdit.id);
 
         Swal.fire({
           icon: "success",
@@ -154,13 +113,12 @@ export const UserModal = ({
             telefono: formData.telefono,
             rol: "cliente",
             estudio_id: parseInt(formData.estudio_id),
-            turno: formData.turno,
+            turno: formData.turno || null,
           })
           .select()
           .single();
 
         if (error) throw error;
-        await saveSchedulesToDB(newUser.id);
 
         Swal.fire({
           icon: "success",
@@ -183,16 +141,6 @@ export const UserModal = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAddSchedule = () => {
-    setSchedules([...schedules, newSchedule]);
-  };
-
-  const removeSchedule = (index) => {
-    const newSchedules = [...schedules];
-    newSchedules.splice(index, 1);
-    setSchedules(newSchedules);
   };
 
   if (!isOpen) return null;
@@ -271,7 +219,7 @@ export const UserModal = ({
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Turno Preferido
+              Horario Favorito
             </label>
             <select
               className="w-full border p-2 rounded-lg"
@@ -280,6 +228,7 @@ export const UserModal = ({
                 setFormData({ ...formData, turno: e.target.value })
               }
             >
+              <option value="">-- Sin definir --</option>
               <option value="mañana">
                 {GYM_CONSTANTS.TURNOS.MAÑANA.label}
               </option>
@@ -287,87 +236,23 @@ export const UserModal = ({
             </select>
           </div>
 
-          <div className="border-t-2 border-gray-200 pt-3">
-            <h4 className="text-xs md:text-sm font-semibold text-gray-700 mb-2">
-              Horarios Fijos (Opcional)
-            </h4>
-            <div className="space-y-2 mb-2">
-              {schedules.map((sch, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between bg-gray-100 p-2 rounded"
-                >
-                  <span className="text-xs md:text-sm font-semibold">
-                    {sch.dia_semana} {sch.hora}
-                  </span>
-                  <button
-                    onClick={() => removeSchedule(idx)}
-                    className="text-red-500 text-xs hover:text-red-700"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <select
-                className="flex-1 border p-1 rounded text-sm"
-                value={newSchedule.dia_semana}
-                onChange={(e) => {
-                  const nuevoDia = e.target.value;
-                  const horariosDia = GYM_CONSTANTS.getHorariosPorDia(nuevoDia);
-                  setNewSchedule({
-                    dia_semana: nuevoDia,
-                    hora: horariosDia.length > 0 ? horariosDia[0] : "",
-                  });
-                }}
-              >
-                {GYM_CONSTANTS.DIAS_SEMANA.map((dia) => (
-                  <option key={dia.id} value={dia.id}>
-                    {dia.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="border p-1 rounded text-sm w-24"
-                value={newSchedule.hora}
-                onChange={(e) =>
-                  setNewSchedule({ ...newSchedule, hora: e.target.value })
-                }
-              >
-                {GYM_CONSTANTS.getHorariosPorDia(newSchedule.dia_semana).map(
-                  (h) => (
-                    <option key={h} value={h}>
-                      {h} hs
-                    </option>
-                  )
-                )}
-              </select>
-              <button
-                onClick={handleAddSchedule}
-                className="bg-gray-200 hover:bg-gray-300 px-3 rounded text-sm font-bold"
-              >
-                +
-              </button>
-            </div>
+          <div className="mt-6">
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                "Guardando..."
+              ) : (
+                <>
+                  <Save className="w-5 h-5" />
+                  {userToEdit ? "Guardar Cambios" : "Registrar Cliente"}
+                </>
+              )}
+            </button>
           </div>
         </div>
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            "Guardando..."
-          ) : (
-            <>
-              <Save className="w-5 h-5" />
-              {userToEdit ? "Guardar Cambios" : "Registrar Cliente"}
-            </>
-          )}
-        </button>
       </div>
     </div>
   );
