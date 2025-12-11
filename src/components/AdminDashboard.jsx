@@ -14,11 +14,14 @@ import {
   Plus,
   Search,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { AdminPacks } from "./AdminPacks";
 import { UserModal } from "./UserModal";
 import { VenderPackModal } from "./VenderPackModal";
+import { AdminAgenda } from "./AdminAgenda";
 import { useCreditos } from "../hooks/useCreditos";
 import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
@@ -38,6 +41,12 @@ const AdminDashboard = () => {
   const [ventas, setVentas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("bookings"); // 'bookings' | 'users' | 'packs'
+
+  // Calendar State
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [calendarDays, setCalendarDays] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
   const { getTodosCreditosAlumna } = useCreditos();
 
   const handleUserSaved = () => {
@@ -205,6 +214,33 @@ const AdminDashboard = () => {
       fetchVentas();
     }
   }, [activeTab]);
+
+  // --- CALENDAR LOGIC ---
+  useEffect(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+
+    let startPadding = startingDay - 1;
+    if (startPadding === -1) startPadding = 6;
+
+    const days = [];
+    for (let i = 0; i < startPadding; i++) days.push({ day: null });
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push({ day: i, date: new Date(year, month, i) });
+    }
+    setCalendarDays(days);
+  }, [currentMonth]);
+
+  const changeMonth = (offset) => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() + offset);
+    setCurrentMonth(newDate);
+  };
+  // ----------------------
 
   const fetchEstudio = async (estudioId) => {
     try {
@@ -397,13 +433,15 @@ const AdminDashboard = () => {
             </h1>
             <p className="text-sm text-gray-500">Gestión administrativa</p>
           </div>
-          <button
-            onClick={() => setShowUserModal(true)}
-            className="w-full md:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"
-          >
-            <Plus className="w-5 h-5" />
-            Nueva Cliente
-          </button>
+          <div className="flex flex-col md:flex-row gap-2">
+            <button
+              onClick={() => setShowUserModal(true)}
+              className="w-full md:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"
+            >
+              <Plus className="w-5 h-5" />
+              <span className="hidden md:inline">Nueva Cliente</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -535,178 +573,296 @@ const AdminDashboard = () => {
       </div>
 
       {/* Contenido según pestaña activa */}
+
       {activeTab === "bookings" && (
-        <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800">
-              Reservas Activas
-            </h2>
+        <div className="space-y-6">
+          {/* Mobile Calendar Widget */}
+          <div className="md:hidden bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl p-4 mb-6 shadow-lg text-white">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Agenda</h2>
+              <Calendar className="w-5 h-5 opacity-80" />
+            </div>
+
+            <div className="flex items-center justify-between bg-white/20 rounded-xl p-2 mb-4 backdrop-blur-sm">
+              <button
+                onClick={() => changeMonth(-1)}
+                className="p-1 hover:bg-white/20 rounded-lg"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="font-bold capitalize">
+                {currentMonth.toLocaleDateString("es-AR", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
+              <button
+                onClick={() => changeMonth(1)}
+                className="p-1 hover:bg-white/20 rounded-lg"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 text-center text-xs font-bold text-white/70 mb-2">
+              <div>LU</div>
+              <div>MA</div>
+              <div>MI</div>
+              <div>JU</div>
+              <div>VI</div>
+              <div>SA</div>
+              <div>DO</div>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((d, i) => {
+                if (!d.day) return <div key={i}></div>;
+                const isSelected =
+                  selectedDate &&
+                  d.date.getDate() === selectedDate.getDate() &&
+                  d.date.getMonth() === selectedDate.getMonth();
+                const isToday =
+                  new Date().toDateString() === d.date.toDateString();
+
+                // Capacity Indicators
+                const dateStr = d.date.toISOString().split("T")[0];
+                const dayReservs = reservas.filter((r) => r.fecha === dateStr);
+                const hasReservations = dayReservs.length > 0;
+
+                let statusClass = "text-white hover:bg-white/20";
+                if (hasReservations)
+                  statusClass = "bg-green-400 text-white shadow-sm"; // Simple indicator
+                if (isSelected)
+                  statusClass = "bg-white text-purple-600 shadow-lg scale-110";
+
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedDate(d.date)}
+                    className={`
+                                h-8 w-8 mx-auto flex items-center justify-center rounded-full font-bold text-sm transition-all
+                                ${statusClass}
+                                ${
+                                  isToday && !isSelected
+                                    ? "ring-2 ring-white ring-offset-0"
+                                    : ""
+                                }
+                            `}
+                  >
+                    {d.day}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 hidden md:table-header-group">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cliente
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Teléfono
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Fecha/Hora
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Actividad
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Cama
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                    Estado
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {reservas.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-800 capitalize">
+                Reservas del{" "}
+                {selectedDate.toLocaleDateString("es-AR", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                })}
+              </h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 hidden md:table-header-group">
                   <tr>
-                    <td
-                      colSpan="6"
-                      className="px-6 py-4 text-center text-gray-500"
-                    >
-                      No hay reservas activas hoy
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Cliente
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Teléfono
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Fecha/Hora
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Actividad
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Cama
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                      Estado
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Acciones
+                    </th>
                   </tr>
-                ) : (
-                  <>
-                    {/* PC View - Table Rows */}
-                    {reservas.map((reserva) => (
-                      <tr
-                        key={reserva.id}
-                        className="hover:bg-gray-50 hidden md:table-row"
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {reservas.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="px-6 py-4 text-center text-gray-500"
                       >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-                                {reserva.usuario.nombre.charAt(0)}
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {reserva.usuario.nombre}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                          {reserva.usuario.telefono}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {formatFecha(reserva.fecha, reserva.hora)}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {reserva.hora.slice(0, 5)} hs
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                          {reserva.credito?.pack?.nombre || "Pack Regular"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell font-medium">
-                          {reserva.cama?.nombre || "-"}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            Confirmada
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() =>
-                                handleWhatsApp(
-                                  reserva.usuario.telefono,
-                                  `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
-                                )
-                              }
-                              className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
-                              title="Enviar WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                releaseBooking(reserva.id, reserva)
-                              }
-                              className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
-                            >
-                              <X className="w-4 h-4" />
-                              Liberar
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {/* Mobile View - Cards */}
-                    <tr className="md:hidden">
-                      <td colSpan="6" className="p-4 space-y-4 bg-gray-50">
-                        {reservas.map((reserva) => (
-                          <div
-                            key={`mobile-${reserva.id}`}
-                            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold shrink-0">
-                                {reserva.usuario.nombre.charAt(0)}
-                              </div>
-                              <div>
-                                <p className="font-bold text-gray-800">
-                                  {reserva.usuario.nombre}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                  {formatFecha(reserva.fecha, reserva.hora)} -{" "}
-                                  {reserva.hora.slice(0, 5)} hs
-                                </p>
-                                <p className="text-xs text-indigo-600 font-semibold mt-1">
-                                  {reserva.cama?.nombre || "Sin Asignar"}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() =>
-                                  handleWhatsApp(
-                                    reserva.usuario.telefono,
-                                    `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
-                                  )
-                                }
-                                className="bg-green-50 text-green-600 p-2 rounded-lg border border-green-100 hover:bg-green-100 transition-colors"
-                              >
-                                <MessageCircle className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  releaseBooking(reserva.id, reserva)
-                                }
-                                className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold border border-red-100 hover:bg-red-100 transition-colors"
-                              >
-                                Liberar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                        No hay reservas activas hoy
                       </td>
                     </tr>
-                  </>
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    <>
+                      {/* PC View - Table Rows */}
+                      {reservas
+                        .filter((r) => {
+                          // Filter by Selected Date
+                          const rDateStr = r.fecha;
+                          const selectedStr = selectedDate
+                            .toISOString()
+                            .split("T")[0];
+                          return rDateStr === selectedStr;
+                        })
+                        .sort((a, b) => {
+                          // Sort by time
+                          return a.hora.localeCompare(b.hora);
+                        })
+                        .map((reserva) => (
+                          <tr
+                            key={reserva.id}
+                            className="hover:bg-gray-50 hidden md:table-row"
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-10 w-10">
+                                  <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                                    {reserva.usuario.nombre.charAt(0)}
+                                  </div>
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {reserva.usuario.nombre}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                              {reserva.usuario.telefono}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {formatFecha(reserva.fecha, reserva.hora)}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {reserva.hora.slice(0, 5)} hs
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
+                              {reserva.credito?.pack?.nombre || "Pack Regular"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 hidden md:table-cell font-medium">
+                              {reserva.cama?.nombre || "-"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                Confirmada
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() =>
+                                    handleWhatsApp(
+                                      reserva.usuario.telefono,
+                                      `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
+                                    )
+                                  }
+                                  className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-lg transition-colors"
+                                  title="Enviar WhatsApp"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </button>
+                                {!(
+                                  new Date(reserva.fecha + "T00:00:00") <
+                                  new Date().setHours(0, 0, 0, 0)
+                                ) && (
+                                  <button
+                                    onClick={() =>
+                                      releaseBooking(reserva.id, reserva)
+                                    }
+                                    className="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                                  >
+                                    <X className="w-4 h-4" />
+                                    Liberar
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+
+                      {/* Mobile View - Cards */}
+                      <tr className="md:hidden">
+                        <td colSpan="6" className="p-4 space-y-4 bg-gray-50">
+                          {reservas
+                            .filter((r) => {
+                              const rDateStr = r.fecha;
+                              const selectedStr = selectedDate
+                                .toISOString()
+                                .split("T")[0];
+                              return rDateStr === selectedStr;
+                            })
+                            .sort((a, b) => a.hora.localeCompare(b.hora))
+                            .map((reserva) => (
+                              <div
+                                key={`mobile-${reserva.id}`}
+                                className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold shrink-0">
+                                    {reserva.usuario.nombre.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-gray-800">
+                                      {reserva.usuario.nombre}
+                                    </p>
+                                    <p className="text-sm text-gray-500">
+                                      {formatFecha(reserva.fecha, reserva.hora)}{" "}
+                                      - {reserva.hora.slice(0, 5)} hs
+                                    </p>
+                                    <p className="text-xs text-indigo-600 font-semibold mt-1">
+                                      {reserva.cama?.nombre || "Sin Asignar"}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() =>
+                                      handleWhatsApp(
+                                        reserva.usuario.telefono,
+                                        `Hola ${reserva.usuario.nombre}! 👋 Te escribo desde BodyFit`
+                                      )
+                                    }
+                                    className="bg-green-50 text-green-600 p-2 rounded-lg border border-green-100 hover:bg-green-100 transition-colors"
+                                  >
+                                    <MessageCircle className="w-5 h-5" />
+                                  </button>
+                                  {!(
+                                    new Date(reserva.fecha + "T00:00:00") <
+                                    new Date().setHours(0, 0, 0, 0)
+                                  ) && (
+                                    <button
+                                      onClick={() =>
+                                        releaseBooking(reserva.id, reserva)
+                                      }
+                                      className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold border border-red-100 hover:bg-red-100 transition-colors"
+                                    >
+                                      Liberar
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
