@@ -150,6 +150,47 @@ const ClientBookingView = () => {
     try {
       const creditosData = await getCreditos(usuarioId);
       setCreditos(creditosData);
+
+      // --- ALERTA VENCIMIENTO / CREDITOS BAJOS ---
+      if (creditosData) {
+        const today = new Date();
+        const vencimiento = new Date(creditosData.fecha_vencimiento);
+        const diffTime = vencimiento - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Solo mostrar si no se mostró ya en esta sesión (para no ser spamer)
+        const alertShown = sessionStorage.getItem(`alert_shown_${usuarioId}`);
+
+        if (!alertShown) {
+          let alertMessage = "";
+          let alertTitle = "";
+          let showAlert = false;
+
+          if (diffDays <= 5 && diffDays >= 0) {
+            alertTitle = "⚠️ ¡Tu pack vence pronto!";
+            alertMessage = `Te quedan solo ${diffDays} días de vigencia. Renová tu pack para no perder tu lugar.`;
+            showAlert = true;
+          } else if (creditosData.creditos_restantes <= 1) {
+            alertTitle = "⚠️ Te quedan pocos créditos";
+            alertMessage = `Tenés ${creditosData.creditos_restantes} crédito(s) disponible(s). ¡Acordate de recargar!`;
+            showAlert = true;
+          }
+
+          if (showAlert) {
+            Swal.fire({
+              title: alertTitle,
+              text: alertMessage,
+              icon: "warning",
+              confirmButtonColor: "#a855f7",
+              confirmButtonText: "Entendido",
+              timer: 6000,
+              timerProgressBar: true,
+            });
+            sessionStorage.setItem(`alert_shown_${usuarioId}`, "true");
+          }
+        }
+      }
+      // -------------------------------------------
     } catch (error) {
       console.error("Error al cargar créditos:", error);
       setCreditos(null);
