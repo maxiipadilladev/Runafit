@@ -20,6 +20,12 @@ export const UserModal = ({
     turno: "",
   });
 
+  const [fixedSchedule, setFixedSchedule] = useState([]);
+  const [tempDay, setTempDay] = useState("");
+  const [tempHour, setTempHour] = useState("");
+  const daysOfWeek = GYM_CONSTANTS.DIAS_SEMANA;
+  const horariosValidos = GYM_CONSTANTS.HORARIOS_VALIDOS; // Or specific logic if needed
+
   // Cargar datos si es edición
   useEffect(() => {
     if (userToEdit) {
@@ -28,8 +34,10 @@ export const UserModal = ({
         nombre: userToEdit.nombre,
         telefono: userToEdit.telefono,
         estudio_id: userToEdit.estudio_id.toString(),
+        estudio_id: userToEdit.estudio_id.toString(),
         turno: userToEdit.turno || "mañana",
       });
+      fetchUserSchedule(userToEdit.id);
     } else {
       // Reset si es nuevo
       setFormData({
@@ -37,10 +45,178 @@ export const UserModal = ({
         nombre: "",
         telefono: "",
         estudio_id: estudioId ? estudioId.toString() : "",
+        estudio_id: estudioId ? estudioId.toString() : "",
         turno: "",
       });
+      setFixedSchedule([]);
     }
   }, [userToEdit, estudioId, isOpen]);
+
+  const fetchUserSchedule = async (userId) => {
+    try {
+      const { data } = await supabase
+        .from("schedule_alumnas")
+        .select("*")
+        .eq("usuario_id", userId);
+      setFixedSchedule(data || []);
+    } catch (error) {
+      console.error("Error loading schedule:", error);
+    }
+  };
+
+  const addScheduleSlot = () => {
+    if (!tempDay || !tempHour) return;
+
+    // Check duplication
+    const exists = fixedSchedule.some(
+      (s) => s.dia_semana === tempDay && s.hora === tempHour
+    );
+    if (!exists) {
+      setFixedSchedule((prev) => [
+        ...prev,
+        { dia_semana: tempDay, hora: tempHour, usuario_id: userToEdit?.id },
+      ]);
+    }
+    setTempHour("");
+    // Keep day selected for convenience? Or reset? Let's keep day.
+  };
+
+  const removeScheduleSlot = (day, time) => {
+    setFixedSchedule((prev) =>
+      prev.filter((s) => !(s.dia_semana === day && s.hora === time))
+    );
+  };
+
+  const saveFixedSchedule = async (userId) => {
+    // 1. Delete all existing for this user (simple sync)
+    await supabase.from("schedule_alumnas").delete().eq("usuario_id", userId);
+
+    // 2. Insert new ones
+    if (fixedSchedule.length > 0) {
+      const toInsert = fixedSchedule.map((s) => ({
+        usuario_id: userId,
+        dia_semana: s.dia_semana,
+        hora: s.hora,
+      }));
+      await supabase.from("schedule_alumnas").insert(toInsert);
+
+      // 3. GENERATE RESERVATIONS AUTOMATICALLY (Materialize)
+      // We'll try to book for the rest of current month
+      await generateReservationsFromSchedule(userId, toInsert);
+    }
+  };
+
+  const generateReservationsFromSchedule = async (userId, scheduleItems) => {
+    // Logic to find future dates in current month matching the schedule
+    // and book them if not already booked.
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    let bookedCount = 0;
+
+    // Map day names to 0-6
+    const dayMap = {
+      Domingo: 0,
+      Lunes: 1,
+      Martes: 2,
+      Miércoles: 3,
+      Jueves: 4,
+      Viernes: 5,
+      Sábado: 6,
+    };
+
+    // Get Active Credit
+    const { data: creditos } = await supabase
+      .from("creditos_alumna")
+      .select("*")
+      .eq("alumna_id", userId)
+      .eq("estado", "activo")
+      .gte("creditos_restantes", 1)
+      .order("fecha_vencimiento", { ascending: true }); // Use nearest expiration first
+
+    if (!creditos || creditos.length === 0) return; // No credit, partial success
+
+    let totalReserved = 0;
+
+    // Loop remaining days of month
+    for (let d = today.getDate(); d <= daysInMonth; d++) {
+      const dateObj = new Date(currentYear, currentMonth, d);
+      // Skip past days (though loop starts at today)
+      if (dateObj < today) continue;
+
+      const dayOfWeekName = Object.keys(dayMap).find(
+        (key) => dayMap[key] === dateObj.getDay()
+      );
+
+      // Check if this day is in schedule
+      const schedItemsForDay = scheduleItems.filter(
+        (s) => s.dia_semana.toLowerCase() === dayOfWeekName?.toLowerCase()
+      );
+
+      for (const item of schedItemsForDay) {
+        const time = item.hora;
+
+        // Find valid credit
+        const validCredit = creditos.find(
+          (c) =>
+            c.creditos_restantes > 0 && new Date(c.fecha_vencimiento) >= dateObj
+        );
+        if (!validCredit) continue;
+
+        // Check if already reserved (idempotency)
+        const dateStr = dateObj.toISOString().split("T")[0];
+        const { data: existing } = await supabase
+          .from("reservas")
+          .select("id")
+          .eq("usuario_id", userId)
+          .eq("fecha", dateStr)
+          .neq("estado", "cancelada");
+        if (existing && existing.length > 0) continue; // "One class per day" rule
+
+        // Check Availability (Database check)
+        const { data: ocupadas } = await supabase
+          .from("reservas")
+          .select("cama_id")
+          .eq("fecha", dateStr)
+          .eq("hora", time + ":00")
+          .neq("estado", "cancelada");
+        const ocupadasIds = ocupadas.map((o) => o.cama_id);
+        const allBeds = [1, 2, 3, 4, 5, 6];
+        const availableBeds = allBeds.filter((b) => !ocupadasIds.includes(b));
+
+        if (availableBeds.length > 0) {
+          // Book random bed
+          const randomIndex = Math.floor(Math.random() * availableBeds.length);
+          const bed = availableBeds[randomIndex];
+
+          const { error } = await supabase.from("reservas").insert({
+            usuario_id: userId,
+            fecha: dateStr,
+            hora: time + ":00",
+            cama_id: bed,
+            credito_id: validCredit.id,
+            estado: "confirmada",
+          });
+          if (!error) {
+            validCredit.creditos_restantes--;
+            bookedCount++;
+          }
+        }
+      }
+    }
+
+    if (bookedCount > 0) {
+      Swal.fire({
+        icon: "success",
+        title: "Agenda Actualizada",
+        text: `Se generaron automáticamente ${bookedCount} reservas para este mes.`,
+        timer: 3000,
+      });
+    }
+  };
 
   const handleSubmit = async () => {
     if (!formData.dni || !formData.nombre || !formData.telefono) {
@@ -85,6 +261,8 @@ export const UserModal = ({
           timer: 1500,
           showConfirmButton: false,
         });
+
+        await saveFixedSchedule(userToEdit.id);
       } else {
         // CREATE
         // Verificar DNI duplicado
@@ -117,6 +295,10 @@ export const UserModal = ({
           })
           .select()
           .single();
+
+        if (error) throw error;
+
+        await saveFixedSchedule(newUser.id);
 
         if (error) throw error;
 
@@ -235,6 +417,87 @@ export const UserModal = ({
               <option value="tarde">{GYM_CONSTANTS.TURNOS.TARDE.label}</option>
             </select>
           </div>
+
+          {/* Schedle Configurator - Mobile Optimized - SOLO VISIBLE SI SE EDITA (Para asegurar que tenga creditos) */}
+          {userToEdit && (
+            <div className="mt-4 border-t pt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Agenda Fija (Horarios Habituales)
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Agregá los días fijos de la alumna. (Asegurate que tenga pack
+                activo primero)
+              </p>
+
+              <div className="flex gap-2 mb-3">
+                <select
+                  className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block p-2.5"
+                  value={tempDay}
+                  onChange={(e) => {
+                    setTempDay(e.target.value);
+                    setTempHour("");
+                  }}
+                >
+                  <option value="">Día...</option>
+                  {daysOfWeek.map((d) => (
+                    <option key={d.id} value={d.label}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="flex-1 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block p-2.5"
+                  value={tempHour}
+                  onChange={(e) => setTempHour(e.target.value)}
+                  disabled={!tempDay}
+                >
+                  <option value="">Hora...</option>
+                  {tempDay &&
+                    GYM_CONSTANTS.getHorariosPorDia(tempDay).map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={addScheduleSlot}
+                  disabled={!tempDay || !tempHour}
+                  className="bg-green-600 text-white p-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-5 h-5 rotate-90" strokeWidth={3} />{" "}
+                  {/* Using Save as 'Plus' metaphor or just simple text */}
+                </button>
+              </div>
+
+              {/* Chips Container */}
+              <div className="flex flex-wrap gap-2 min-h-[50px] bg-gray-50 p-2 rounded-lg border border-dashed border-gray-300">
+                {fixedSchedule.length === 0 && (
+                  <span className="text-xs text-gray-400 self-center mx-auto">
+                    Sin horarios fijos asignados
+                  </span>
+                )}
+
+                {fixedSchedule.map((s, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center px-2 py-1 mr-1 text-sm font-medium text-green-800 bg-green-100 rounded"
+                  >
+                    {s.dia_semana.slice(0, 3)} {s.hora}hs
+                    <button
+                      type="button"
+                      onClick={() => removeScheduleSlot(s.dia_semana, s.hora)}
+                      className="inline-flex items-center p-0.5 ml-2 text-sm text-green-400 bg-transparent rounded-sm hover:bg-green-200 hover:text-green-900"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-6">
             <button

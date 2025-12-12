@@ -297,6 +297,22 @@ const ClientBookingView = () => {
     // LOADING STATE COULD BE ADDED HERE IF NEEDED
     // setSelectedSlot({ day, date, time, bed: null, fecha: fechaISO }); // REMOVING PREMATURE STATE update
 
+    // --- VALIDACIÓN: SOLO UNA CLASE POR DÍA ---
+    const yaTieneReservaEseDia = reservas.some(
+      (r) => r.fecha === fechaISO && r.estado !== "cancelada"
+    );
+
+    if (yaTieneReservaEseDia) {
+      Swal.fire({
+        icon: "warning",
+        title: "Día ya reservado",
+        text: "Solo podés reservar una clase por día. Cancelá tu turno actual si querés cambiar de horario.",
+        confirmButtonColor: "#a855f7",
+      });
+      return;
+    }
+    // ------------------------------------------
+
     const { data: misReservasEnEseHorario } = await supabase
       .from("reservas")
       .select("*")
