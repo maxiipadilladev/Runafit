@@ -282,8 +282,8 @@ const AdminDashboard = () => {
       if (error) throw error;
       setReservas(data || []);
     } catch (error) {
-      console.error("Error al cargar reservas:", error);
-      alert("Error al cargar las reservas");
+      console.error("Error al cargar reservas DETALLADO:", error);
+      // alert("Error al cargar las reservas");
     } finally {
       setLoading(false);
     }
@@ -433,7 +433,7 @@ const AdminDashboard = () => {
             </h1>
             <p className="text-sm text-gray-500">Gestión administrativa</p>
           </div>
-          <div className="flex flex-col md:flex-row gap-2">
+          <div className="flex flex-col md:flex-row gap-2 items-center">
             <button
               onClick={() => setShowUserModal(true)}
               className="w-full md:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 font-medium"

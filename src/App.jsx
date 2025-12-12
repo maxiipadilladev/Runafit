@@ -7,7 +7,9 @@ import {
   Zap,
   LogIn,
   LogOut,
+  Bell,
 } from "lucide-react";
+import { supabase } from "./lib/supabase";
 
 import ClientBookingView from "./components/ClientBookingView";
 import AdminDashboard from "./components/AdminDashboard";
@@ -21,6 +23,12 @@ function App() {
   const [usuario, setUsuario] = useState(null);
 
   // Revisar si ya hay sesión guardada
+  // Notifications State (Global)
+  const [notificaciones, setNotificaciones] = useState([]);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [verHistorialNotif, setVerHistorialNotif] = useState(false);
+
+  // Revisar si ya hay sesión guardada
   useEffect(() => {
     const userStr = localStorage.getItem("usuario");
     if (userStr) {
@@ -30,6 +38,7 @@ function App() {
         // Redirigir según rol
         if (user.rol === "admin") {
           setCurrentView("admin");
+          fetchNotificaciones(); // Initial fetch
         } else {
           setCurrentView("bookings");
         }
@@ -39,6 +48,64 @@ function App() {
       }
     }
   }, []);
+
+  // Subscribe to Notifications if Admin
+  useEffect(() => {
+    if (usuario?.rol === "admin") {
+      fetchNotificaciones();
+      const channelNotif = supabase
+        .channel("app-notificaciones")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "notificaciones" },
+          (payload) => {
+            setNotificaciones((prev) => [payload.new, ...prev]);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channelNotif);
+      };
+    }
+  }, [usuario]);
+
+  useEffect(() => {
+    if (usuario?.rol === "admin" && showNotifDropdown) {
+      fetchNotificaciones();
+    }
+  }, [showNotifDropdown, verHistorialNotif]);
+
+  const fetchNotificaciones = async () => {
+    try {
+      let query = supabase
+        .from("notificaciones")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (!verHistorialNotif) {
+        query = query.eq("leida", false);
+      }
+
+      const { data } = await query;
+      setNotificaciones(data || []);
+    } catch (error) {
+      console.error("Error fetching notifications", error);
+    }
+  };
+
+  const markAsRead = async (id) => {
+    try {
+      await supabase
+        .from("notificaciones")
+        .update({ leida: true })
+        .eq("id", id);
+      setNotificaciones((prev) => prev.filter((n) => n.id !== id));
+    } catch (error) {
+      console.error("Error marking as read", error);
+    }
+  };
 
   const handleLogin = (user) => {
     setUsuario(user);
@@ -145,6 +212,82 @@ function App() {
                     </button>
                   );
                 })}
+
+              {/* Bell Icon (Only Admin) */}
+              {usuario?.rol === "admin" && (
+                <div className="relative mr-2">
+                  <button
+                    onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                    className="p-2 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors relative"
+                  >
+                    <Bell className="w-5 h-5 text-gray-600" />
+                    {notificaciones.length > 0 && (
+                      <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                    )}
+                  </button>
+
+                  {/* Dropdown */}
+                  {showNotifDropdown && (
+                    <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                      <div className="p-3 border-b bg-gray-50 flex justify-between items-center">
+                        <h3 className="font-bold text-gray-700 text-sm">
+                          Notificaciones
+                        </h3>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVerHistorialNotif(!verHistorialNotif);
+                          }}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        >
+                          {verHistorialNotif
+                            ? "Ver solo nuevas"
+                            : "Ver historial"}
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {notificaciones.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500 text-sm">
+                            {verHistorialNotif
+                              ? "No hay notificaciones"
+                              : "No hay notificaciones nuevas"}
+                          </div>
+                        ) : (
+                          notificaciones.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => !n.leida && markAsRead(n.id)}
+                              className={`p-3 border-b cursor-pointer transition-colors text-left ${
+                                n.leida
+                                  ? "bg-gray-50 opacity-75"
+                                  : "hover:bg-purple-50 bg-white"
+                              }`}
+                            >
+                              <p
+                                className={`text-sm text-gray-800 ${
+                                  n.leida ? "font-normal" : "font-bold"
+                                }`}
+                              >
+                                {n.mensaje}
+                              </p>
+                              <div className="flex justify-between items-center mt-1">
+                                <p className="text-xs text-gray-400">
+                                  {new Date(n.created_at).toLocaleString()}
+                                </p>
+                                {n.leida && (
+                                  <span className="text-[10px] text-gray-400 border px-1 rounded">
+                                    Leída
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Botón Logout */}
               <button

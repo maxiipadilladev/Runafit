@@ -23,6 +23,7 @@ const ClientBookingView = () => {
   const [calendarDays, setCalendarDays] = useState([]);
 
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [repeatMonth, setRepeatMonth] = useState(false); // Checkbox state
   const [filterShift, setFilterShift] = useState("todos"); // todos, mañana, tarde
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [reservas, setReservas] = useState([]);
@@ -297,10 +298,18 @@ const ClientBookingView = () => {
     const camaDisponible = camasDisponibles[randomIndex];
 
     setSelectedSlot({ day, date, time, bed: camaDisponible, fecha: fechaISO });
+    setRepeatMonth(false); // Reset checkbox
   };
 
   const confirmBooking = async () => {
     if (!usuario || !selectedSlot) return;
+
+    // --- LOGICA REPETIR MES ---
+    if (repeatMonth) {
+      await handleRepeatBooking();
+      return;
+    }
+    // --------------------------
 
     // Guardar referencia local para evitar problemas de estado
     const bedToBook = selectedSlot.bed;
@@ -423,6 +432,136 @@ const ClientBookingView = () => {
       });
       setSelectedSlot(null);
     }
+  };
+
+  const handleRepeatBooking = async () => {
+    // 1. Calculate dates
+    const currentDate = new Date(selectedSlot.fecha + "T00:00:00");
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const dayOfWeek = currentDate.getDay(); // 0-6
+    const time = selectedSlot.time;
+
+    const datesToBook = [];
+    // Start from the selected date (inclusive? Yes, the user wants to book THIS + others)
+    // Actually, let's include the selected date in the loop logic to share code,
+    // BUT usually the user selects one date.
+    // Let's iterate from selectedDate until end of month.
+
+    let iterDate = new Date(currentDate);
+    while (iterDate.getMonth() === month) {
+      datesToBook.push(new Date(iterDate));
+      iterDate.setDate(iterDate.getDate() + 7);
+    }
+
+    // 2. Check credits
+    const { data: creditosActivos } = await supabase
+      .from("creditos_alumna")
+      .select("id, creditos_restantes, fecha_vencimiento")
+      .eq("alumna_id", usuario.id)
+      .eq("estado", "activo")
+      .gte("creditos_restantes", 1) // At least 1
+      .order("fecha_vencimiento", { ascending: true }); // Expiring sooner first? or purchase date?
+    // Vencimiento logic is better for user.
+
+    if (!creditosActivos || creditosActivos.length === 0) {
+      Swal.fire({
+        icon: "error",
+        title: "Sin crédito",
+        text: "No tenés créditos disponibles.",
+      });
+      return;
+    }
+
+    let totalCredits = creditosActivos.reduce(
+      (acc, c) => acc + c.creditos_restantes,
+      0
+    );
+    const maxBookable = Math.min(datesToBook.length, totalCredits);
+
+    if (maxBookable < datesToBook.length) {
+      const confirm = await Swal.fire({
+        title: "Créditos insuficientes",
+        text: `Querés reservar ${datesToBook.length} días pero tenés ${totalCredits} créditos. ¿Reservamos solo los primeros ${totalCredits}?`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, reservar disponibles",
+      });
+      if (!confirm.isConfirmed) return;
+    }
+
+    // 3. Loop and Book
+    let successCount = 0;
+    let failCount = 0;
+
+    // Show Loading
+    Swal.fire({ title: "Reservando...", didOpen: () => Swal.showLoading() });
+
+    for (let i = 0; i < maxBookable; i++) {
+      const d = datesToBook[i];
+      const dateStr = d.toISOString().split("T")[0];
+
+      // Find credit for this specific date (validity)
+      const validCredit = creditosActivos.find(
+        (c) => c.creditos_restantes > 0 && new Date(c.fecha_vencimiento) >= d
+      );
+
+      if (!validCredit) {
+        failCount++;
+        continue;
+      }
+
+      // Find available bed
+      // We need to check availability for EACH date.
+      // Doing this in loop is slow but safer for concurrency without a complex Stored Procedure.
+      const { data: ocupadas } = await supabase
+        .from("reservas")
+        .select("cama_id")
+        .eq("fecha", dateStr)
+        .eq("hora", time + ":00")
+        .neq("estado", "cancelada");
+      const idsOcupadas = ocupadas.map((o) => o.cama_id);
+      const disponibles = beds.filter((b) => !idsOcupadas.includes(b));
+
+      if (disponibles.length === 0) {
+        failCount++;
+        continue; // Full
+      }
+
+      // Pick same bed if possible, else random
+      let bed = selectedSlot.bed;
+      if (!disponibles.includes(bed)) bed = disponibles[0];
+
+      // Insert
+      const { error } = await supabase.from("reservas").insert({
+        usuario_id: usuario.id,
+        fecha: dateStr,
+        hora: time + ":00",
+        cama_id: bed,
+        credito_id: validCredit.id,
+        estado: "confirmada",
+      });
+
+      if (!error) {
+        successCount++;
+        validCredit.creditos_restantes--; // Local decrement to track
+      } else {
+        failCount++;
+      }
+    }
+
+    setSelectedSlot(null);
+    await fetchReservas();
+    await fetchTodasLasReservas();
+    await fetchCreditos(usuario.id);
+
+    Swal.fire({
+      icon: successCount > 0 ? "success" : "error",
+      title: successCount > 0 ? "¡Reservas listas!" : "Error",
+      text: `Se confirmaron ${successCount} reservas. ${
+        failCount > 0 ? `(${failCount} fallaron por cupo/crédito)` : ""
+      }`,
+    });
   };
 
   const cancelBooking = async (reservaId) => {
@@ -676,9 +815,23 @@ const ClientBookingView = () => {
             <div className="space-y-3 mb-6">
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Día</span>
-                <span className="font-semibold">
-                  {selectedSlot.day} {selectedSlot.date}
-                </span>
+                <div className="text-right">
+                  <span className="font-semibold block">
+                    {selectedSlot.day} {selectedSlot.date}
+                  </span>
+                  {/* Checkbox Repeat */}
+                  <label className="flex items-center justify-end gap-2 mt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={repeatMonth}
+                      onChange={(e) => setRepeatMonth(e.target.checked)}
+                      className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                    />
+                    <span className="text-xs font-bold text-purple-700">
+                      Repetir todo el mes
+                    </span>
+                  </label>
+                </div>
               </div>
               <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <span className="text-gray-600">Horario</span>
