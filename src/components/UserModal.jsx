@@ -229,11 +229,23 @@ export const UserModal = ({
       return;
     }
 
-    if (formData.dni.length < 7) {
+    if (!formData.dni || formData.dni.length < 7 || formData.dni.length > 8) {
       Swal.fire({
         icon: "warning",
         title: "DNI inválido",
-        text: "Debe tener al menos 7 dígitos",
+        text: "Debe tener entre 7 y 8 dígitos reales",
+        confirmButtonColor: "#10b981",
+      });
+      return;
+    }
+
+    // Check against dummy DNIs
+    const dummyDNIs = ["123456", "12345678", "11111111", "00000000"];
+    if (dummyDNIs.includes(formData.dni)) {
+      Swal.fire({
+        icon: "warning",
+        title: "DNI inválido",
+        text: "Ingresá un DNI real",
         confirmButtonColor: "#10b981",
       });
       return;

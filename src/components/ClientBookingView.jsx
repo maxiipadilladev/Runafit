@@ -10,6 +10,10 @@ import {
   Ticket,
   Clock,
   Trash2,
+  Plus,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useCreditos } from "../hooks/useCreditos";
@@ -686,6 +690,14 @@ const ClientBookingView = () => {
 
     if (!result.isConfirmed) return;
 
+    // --- ADVERTENCIA DE SEGURIDAD (DOBLE CHECK) ---
+    // Si la reserva ya paso, no dejar cancelar
+    if (new Date(fechaReserva) < new Date()) {
+      Swal.fire("Error", "No podés cancelar una clase que ya pasó.", "error");
+      return;
+    }
+    // ----------------------------------------------
+
     let creditBefore = null;
     if (reserva.credito_id) {
       const { data } = await supabase
@@ -703,39 +715,48 @@ const ClientBookingView = () => {
 
     if (error) return;
 
-    if (reserva.credito_id && creditBefore !== null) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    // --- SIMPLIFICACIÓN Y CORRECCIÓN BUGEADA ---
+    // El bug era que la logica de "esperar y chequear" corría varias veces o se superponía.
+    // Lo simplificamos: Primero devolvemos el crédito (si aplica), luego cancelamos la reserva.
+    // O mejor: Usamos una transacción RPC si fuera posible, pero acá:
 
-      const { data: creditAfterData } = await supabase
-        .from("creditos_alumna")
-        .select("creditos_restantes")
-        .eq("id", reserva.credito_id)
-        .single();
+    try {
+      if (reserva.credito_id) {
+        // Intentar usar RPC para incrementar de forma atómica
+        const { error: rpcError } = await supabase.rpc("increment_creditos", {
+          row_id: reserva.credito_id,
+        });
 
-      const creditAfter = creditAfterData
-        ? creditAfterData.creditos_restantes
-        : 0;
-
-      if (creditAfter === creditBefore) {
-        try {
-          const { error: rpcError } = await supabase.rpc("increment_creditos", {
-            row_id: reserva.credito_id,
-          });
-
-          if (rpcError) {
+        if (rpcError) {
+          console.warn(
+            "RPC increment_creditos falló o no existe, usando fallback manual.",
+            rpcError
+          );
+          // Fallback manual: Traer, sumar, guardar.
+          const { data: currentCredit } = await supabase
+            .from("creditos_alumna")
+            .select("creditos_restantes")
+            .eq("id", reserva.credito_id)
+            .single();
+          if (currentCredit) {
             await supabase
               .from("creditos_alumna")
               .update({
-                creditos_restantes: creditBefore + 1,
-                updated_at: new Date().toISOString(),
+                creditos_restantes: currentCredit.creditos_restantes + 1,
               })
               .eq("id", reserva.credito_id);
           }
-        } catch (err) {
-          console.error("Error manual refund:", err);
         }
       }
+    } catch (err) {
+      console.error("Error devolviendo crédito:", err);
+      Swal.fire(
+        "Atención",
+        "El turno se canceló pero hubo un error devolviendo el crédito. Contactá a la admin.",
+        "warning"
+      );
     }
+    // -------------------------------------------
 
     Swal.fire({
       icon: "success",
@@ -780,7 +801,7 @@ const ClientBookingView = () => {
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
             Hola, {usuario?.nombre || "Cliente"} 👋
           </h1>
-          <p className="text-gray-600 mb-4">Reservá tu próxima clase</p>
+          <p className="text-gray-600 mb-4">Gestioná tus clases y reservas.</p>
 
           {/* Panel de Créditos */}
           {creditos ? (
@@ -822,12 +843,22 @@ const ClientBookingView = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-yellow-50 rounded-lg p-4 border-l-4 border-yellow-500">
-              <p className="text-sm text-yellow-700 font-semibold">
-                ⚠️ No tenés packs activos
-              </p>
-              <p className="text-xs text-yellow-600 mt-1">
-                Contactá al estudio para comprar un pack de clases
+            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-500" />
+              <p className="text-sm text-gray-700">
+                No tenés créditos activos.{" "}
+                <span
+                  className="font-bold cursor-pointer text-orange-600 underline"
+                  onClick={() =>
+                    Swal.fire(
+                      "Comprar Pack",
+                      "Pedile a la admin que te asigne un pack o comprá por transferencia.",
+                      "info"
+                    )
+                  }
+                >
+                  Comprar Pack
+                </span>
               </p>
             </div>
           )}
@@ -849,317 +880,281 @@ const ClientBookingView = () => {
         </div>
       )}
 
-      {/* Modal de Confirmación */}
-      {selectedSlot && !showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-40">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 relative animate-scale-in">
-            <button
-              onClick={() => setSelectedSlot(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-6 h-6" />
-            </button>
+      {/* SECCION MIS RESERVAS */}
+      <div className="max-w-md mx-auto mb-8">
+        <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-purple-600" />
+          Mis Próximas Clases
+        </h2>
 
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar className="w-8 h-8 text-purple-600" />
+        {reservas.length === 0 ? (
+          <div className="bg-white rounded-xl p-6 text-center shadow-sm border border-gray-100">
+            <p className="text-gray-400 mb-2">No tenés clases agendadas.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reservas.map((r) => (
+              <div
+                key={r.id}
+                className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden"
+              >
+                {/* Indicador lateral de color */}
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500"></div>
+
+                <div>
+                  <p className="text-sm font-bold text-gray-800 capitalize">
+                    {new Date(r.fecha + "T00:00:00").toLocaleDateString(
+                      "es-AR",
+                      { weekday: "long", day: "numeric", month: "long" }
+                    )}
+                  </p>
+                  <div className="flex items-center gap-2 text-gray-600 text-sm mt-1">
+                    <Clock className="w-4 h-4" />
+                    <span>{r.hora.slice(0, 5)} hs</span>
+                    <span className="text-gray-300">|</span>
+                    <span className="font-medium">Cama {r.cama?.nombre}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => cancelBooking(r.id)}
+                  className="bg-red-50 hover:bg-red-100 text-red-600 p-2 rounded-lg transition-colors"
+                  title="Cancelar turno"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Confirmar Reserva
-              </h3>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* SECCION CALENDARIO RESERVA */}
+      <div className="max-w-md mx-auto mb-20">
+        <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+          <Plus className="w-5 h-5 text-purple-600" />
+          Reservar Nuevo Turno
+        </h2>
+
+        {/* Calendar UI */}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          {/* Month Header */}
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 flex justify-between items-center text-white">
+            <h2 className="text-xl font-bold capitalize">
+              {currentMonth.toLocaleDateString("es-AR", {
+                month: "long",
+                year: "numeric",
+              })}
+            </h2>
+            <div className="flex gap-2">
+              <button
+                onClick={() => changeMonth(-1)}
+                className="p-2 hover:bg-white/20 rounded-full transition"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button
+                onClick={() => changeMonth(1)}
+                className="p-2 hover:bg-white/20 rounded-full transition"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+              {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+                <div key={d} className="text-xs font-bold text-gray-400 p-1">
+                  {d}
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Día</span>
-                <div className="text-right">
-                  <span className="font-semibold block">
-                    {selectedSlot.day} {selectedSlot.date}
-                  </span>
-                  {/* Checkbox Repeat */}
-                  <label className="flex items-center justify-end gap-2 mt-1 cursor-pointer">
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((d, i) => {
+                if (!d.day) return <div key={i}></div>;
+                const isSelected =
+                  selectedDate &&
+                  d.date.toDateString() === selectedDate.toDateString();
+                const isToday =
+                  new Date().toDateString() === d.date.toDateString();
+
+                return (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setSelectedDate(d.date);
+                      setSelectedSlot(null); // Reset selection
+                    }}
+                    className={`
+                          h-9 w-9 rounded-full flex items-center justify-center text-sm font-medium transition-all
+                          ${
+                            isSelected
+                              ? "bg-purple-600 text-white shadow-md scale-105"
+                              : "text-gray-700 hover:bg-purple-50"
+                          }
+                          ${
+                            isToday && !isSelected
+                              ? "ring-2 ring-purple-400 ring-offset-1"
+                              : ""
+                          }
+                       `}
+                  >
+                    {d.day}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Slots of the Selected Day */}
+            <div className="mt-6 border-t pt-4">
+              <h3 className="font-bold text-gray-800 mb-3 capitalize">
+                Horarios del{" "}
+                {selectedDate.toLocaleDateString("es-AR", {
+                  weekday: "long",
+                  day: "numeric",
+                })}
+              </h3>
+
+              <div className="grid grid-cols-3 gap-2">
+                {getDailySlots(selectedDate).slots.length === 0 ? (
+                  <p className="col-span-3 text-center text-gray-400 text-sm py-2">
+                    No hay clases este día.
+                  </p>
+                ) : (
+                  getDailySlots(selectedDate).slots.map((time) => {
+                    const dateISO = getDailySlots(selectedDate).isoDate;
+                    const isBooked = reservas.some(
+                      (r) =>
+                        r.fecha === dateISO &&
+                        r.hora.startsWith(time) &&
+                        r.estado !== "cancelada"
+                    );
+                    const isSelected =
+                      selectedSlot &&
+                      selectedSlot.time === time &&
+                      selectedSlot.fecha === dateISO;
+
+                    // Check if full (optimistic check or visual only if we have data)
+                    // Here we rely on handleBedClick to validate fullness
+
+                    return (
+                      <button
+                        key={time}
+                        onClick={() =>
+                          !isBooked &&
+                          handleBedClick(
+                            getDailySlots(selectedDate).day,
+                            getDailySlots(selectedDate).fullDate,
+                            time,
+                            dateISO
+                          )
+                        }
+                        disabled={isBooked}
+                        className={`
+                                    py-2 px-1 rounded-lg text-sm font-medium border transition-all
+                                    ${
+                                      isBooked
+                                        ? "bg-gray-100 text-gray-400 border-gray-100 cursor-not-allowed decoration-slice"
+                                        : isSelected
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                        : "bg-white text-gray-700 border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+                                    }
+                                 `}
+                      >
+                        {time}
+                        {isBooked && (
+                          <span className="block text-[10px] lowercase">
+                            reservado
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CONFIRMATION BUTTON FLOATING */}
+        {selectedSlot && (
+          <div className="fixed inset-0 bg-black/50 z-40 flex items-end sm:items-center justify-center animate-fade-in p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-slide-up sm:animate-scale-in">
+              {/* Header Modal */}
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 flex justify-between items-center text-white">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-white/90" />
+                  <h3 className="font-bold text-lg">Confirmar Reserva</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedSlot(null)}
+                  className="text-white/80 hover:text-white"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <p className="text-sm text-gray-500 font-medium mb-1">
+                      Vas a reservar:
+                    </p>
+                    <h3 className="text-xl font-bold text-gray-800 capitalize">
+                      {selectedDate.toLocaleDateString("es-AR", {
+                        weekday: "long",
+                        day: "numeric",
+                      })}
+                    </h3>
+                    <div className="text-2xl font-black text-purple-600 mt-1">
+                      {selectedSlot.time} hs
+                    </div>
+                  </div>
+                  <div className="bg-green-50 px-3 py-2 rounded-xl border border-green-100 text-center">
+                    <p className="text-xs text-green-600 font-bold uppercase tracking-wider">
+                      Cama
+                    </p>
+                    <p className="text-2xl font-black text-green-700">
+                      #{selectedSlot.bed}
+                    </p>
+                  </div>
+                </div>
+
+                {/* CHECKBOX REPEAT MONTH */}
+                <div className="flex items-center gap-3 mb-6 bg-purple-50 p-4 rounded-xl border border-purple-100">
+                  <div className="bg-white p-2 rounded-lg shadow-sm">
                     <input
                       type="checkbox"
+                      id="repeatMonth"
                       checked={repeatMonth}
                       onChange={(e) => setRepeatMonth(e.target.checked)}
-                      className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                      className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
                     />
-                    <span className="text-xs font-bold text-purple-700">
-                      Repetir todo el mes
+                  </div>
+                  <label
+                    htmlFor="repeatMonth"
+                    className="text-sm text-gray-700 font-medium cursor-pointer flex-1 select-none leading-tight"
+                  >
+                    Repetir este horario <br />{" "}
+                    <span className="text-purple-600 font-bold">
+                      todo el mes
                     </span>
                   </label>
                 </div>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600">Horario</span>
-                <span className="font-semibold">{selectedSlot.time}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                <span className="text-gray-600 font-semibold">Tu Cama</span>
-                <span className="font-bold text-green-600 text-lg">
-                  #{selectedSlot.bed}
-                </span>
+
+                <button
+                  onClick={confirmBooking}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all text-lg flex items-center justify-center gap-2"
+                >
+                  Confirmar Reserva <Check className="w-5 h-5" />
+                </button>
               </div>
             </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
-              <p className="text-sm text-blue-800">
-                ✓ Se te asignó automáticamente la Cama #{selectedSlot.bed} para
-                que estés siempre cómoda
-              </p>
-            </div>
-
-            <button
-              onClick={confirmBooking}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg"
-            >
-              Confirmar Reserva
-            </button>
           </div>
-        </div>
-      )}
-
-      {/* Calendario */}
-      <div className="max-w-md mx-auto bg-white rounded-2xl shadow-lg overflow-hidden mb-6">
-        {/* Header Calendario */}
-        <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 flex justify-between items-center text-white">
-          <button
-            onClick={() => changeMonth(-1)}
-            className="p-1 hover:bg-white/20 rounded-full"
-          >
-            <span className="text-xl">←</span>
-          </button>
-          <h2 className="font-bold text-lg capitalize">
-            {currentMonth.toLocaleDateString("es-AR", {
-              month: "long",
-              year: "numeric",
-            })}
-          </h2>
-          <button
-            onClick={() => changeMonth(1)}
-            className="p-1 hover:bg-white/20 rounded-full"
-          >
-            <span className="text-xl">→</span>
-          </button>
-        </div>
-
-        {/* Días Semana */}
-        <div className="grid grid-cols-7 text-center p-2 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          <div>Lu</div>
-          <div>Ma</div>
-          <div>Mi</div>
-          <div>Ju</div>
-          <div>Vi</div>
-          <div>Sa</div>
-          <div>Do</div>
-        </div>
-
-        {/* Grid Días */}
-        <div className="grid grid-cols-7 p-2 gap-1">
-          {calendarDays.map((d, i) => {
-            if (!d.day) return <div key={i}></div>;
-
-            const isSelected =
-              selectedDate &&
-              d.date.getDate() === selectedDate.getDate() &&
-              d.date.getMonth() === selectedDate.getMonth();
-
-            const isToday =
-              new Date().getDate() === d.date.getDate() &&
-              new Date().getMonth() === d.date.getMonth() &&
-              new Date().getFullYear() === d.date.getFullYear();
-
-            // Highlight user reservations
-            const hasReservation = reservas.some((r) => {
-              const resDate = new Date(r.fecha + "T00:00:00");
-              return (
-                resDate.getDate() === d.date.getDate() &&
-                resDate.getMonth() === d.date.getMonth()
-              );
-            });
-
-            return (
-              <button
-                key={i}
-                onClick={() => setSelectedDate(d.date)}
-                className={`
-                              h-10 w-10 mx-auto flex items-center justify-center rounded-full text-sm font-medium transition-all
-                              ${
-                                isSelected
-                                  ? "bg-purple-600 text-white shadow-md transform scale-105"
-                                  : "hover:bg-purple-50 text-gray-700"
-                              }
-                              ${
-                                isToday && !isSelected
-                                  ? "border-2 border-purple-400 font-bold"
-                                  : ""
-                              }
-                              }
-                              ${
-                                hasReservation && !isSelected
-                                  ? "border-2 border-purple-500 text-purple-700 font-bold"
-                                  : ""
-                              }
-                          `}
-              >
-                {d.day}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Lista de Horarios para el día seleccionado */}
-      <div className="max-w-md mx-auto space-y-4">
-        {selectedDate &&
-          (() => {
-            // Calcular datos del día
-            const dateObj = selectedDate;
-            const slotsData = getDailySlots(dateObj);
-
-            if (!slotsData || slotsData.slots.length === 0) {
-              return (
-                <div className="text-center py-8 bg-white rounded-xl shadow-sm">
-                  <p className="text-gray-500">
-                    No hay horarios disponibles para este día.
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Intenta seleccionar otro día en el calendario.
-                  </p>
-                </div>
-              );
-            }
-
-            return (
-              <div className="bg-white rounded-2xl shadow-lg overflow-hidden animate-fade-in">
-                <div className="bg-gray-50 border-b border-gray-100 p-4 text-center">
-                  <h3 className="text-lg font-bold text-gray-800 capitalize">
-                    {slotsData.day} {slotsData.date}
-                  </h3>
-                </div>
-
-                {/* Filtro Mañana/Tarde */}
-                <div className="flex justify-center gap-2 p-2 bg-gray-50">
-                  <button
-                    onClick={() => setFilterShift("todos")}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                      filterShift === "todos"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setFilterShift("mañana")}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                      filterShift === "mañana"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                    }`}
-                  >
-                    Mañana
-                  </button>
-                  <button
-                    onClick={() => setFilterShift("tarde")}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${
-                      filterShift === "tarde"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                    }`}
-                  >
-                    Tarde
-                  </button>
-                </div>
-
-                <div className="p-4 space-y-4">
-                  {slotsData.slots
-                    .filter((time) => {
-                      if (filterShift === "todos") return true;
-                      return getShift(time) === filterShift;
-                    })
-                    .map((time) => {
-                      const fechaISO = slotsData.isoDate;
-
-                      const reservasSlot = todasLasReservas.filter(
-                        (r) =>
-                          r.fecha === fechaISO &&
-                          r.hora.slice(0, 5) === time &&
-                          r.estado !== "cancelada"
-                      );
-
-                      const ocupadas = reservasSlot.length;
-                      const capacidad = 6;
-                      const isFull = ocupadas >= capacidad;
-
-                      const miReserva = reservasSlot.find(
-                        (r) => r.usuario_id === usuario?.id
-                      );
-
-                      const slotDate = new Date(`${fechaISO}T${time}:00`);
-                      const now = new Date();
-                      const isPast = slotDate < now;
-
-                      if (isPast && !miReserva) return null;
-
-                      return (
-                        <div
-                          key={time}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-purple-200 transition-colors"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="bg-white p-2 rounded-lg shadow-sm font-bold text-gray-700 font-mono">
-                              {time}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`text-sm font-medium ${
-                                    isFull ? "text-red-500" : "text-green-600"
-                                  }`}
-                                >
-                                  {ocupadas}/{capacidad} camas
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {miReserva ? (
-                            <button
-                              onClick={() => cancelBooking(miReserva.id)}
-                              className="bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
-                            >
-                              Cancelar
-                            </button>
-                          ) : isFull ? (
-                            <button
-                              disabled
-                              className="bg-gray-200 text-gray-400 px-4 py-2 rounded-lg text-sm font-bold cursor-not-allowed"
-                            >
-                              Lleno
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() =>
-                                handleBedClick(
-                                  slotsData.day,
-                                  slotsData.date,
-                                  time,
-                                  fechaISO
-                                )
-                              }
-                              className="bg-purple-600 text-white hover:bg-purple-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all hover:shadow-md"
-                            >
-                              Reservar
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            );
-          })()}
+        )}
       </div>
 
       {/* Footer Branding */}
