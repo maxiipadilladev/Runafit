@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { useCreditos } from "../hooks/useCreditos";
+import { useCreditos } from "@core/hooks/useCreditos";
 import Swal from "sweetalert2";
 
 export const VenderPackModal = ({

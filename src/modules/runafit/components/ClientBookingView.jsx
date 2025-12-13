@@ -15,8 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
-import { useCreditos } from "../hooks/useCreditos";
+import { supabase } from "@core/lib/supabase";
+import { useCreditos } from "@core/hooks/useCreditos";
 import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 
@@ -625,7 +625,12 @@ const ClientBookingView = () => {
     });
   };
 
+  /* State for processing */
+  const [processingId, setProcessingId] = useState(null);
+
   const cancelBooking = async (reservaId) => {
+    if (processingId) return; // Prevent double clicks
+
     let reserva = reservas.find((r) => r.id === reservaId);
 
     // Si no está en el estado local, buscarla en DB (robustez)
@@ -696,83 +701,51 @@ const ClientBookingView = () => {
       Swal.fire("Error", "No podés cancelar una clase que ya pasó.", "error");
       return;
     }
-    // ----------------------------------------------
-
-    let creditBefore = null;
-    if (reserva.credito_id) {
-      const { data } = await supabase
-        .from("creditos_alumna")
-        .select("creditos_restantes")
-        .eq("id", reserva.credito_id)
-        .single();
-      creditBefore = data ? data.creditos_restantes : 0;
-    }
-
-    const { error } = await supabase
-      .from("reservas")
-      .update({ estado: "cancelada" })
-      .eq("id", reservaId);
-
-    if (error) return;
-
-    // --- SIMPLIFICACIÓN Y CORRECCIÓN BUGEADA ---
-    // El bug era que la logica de "esperar y chequear" corría varias veces o se superponía.
-    // Lo simplificamos: Primero devolvemos el crédito (si aplica), luego cancelamos la reserva.
-    // O mejor: Usamos una transacción RPC si fuera posible, pero acá:
-
+    // --- ATOMIC CANCELLATION ---
     try {
-      if (reserva.credito_id) {
-        // Intentar usar RPC para incrementar de forma atómica
-        const { error: rpcError } = await supabase.rpc("increment_creditos", {
-          row_id: reserva.credito_id,
+      const { data, error } = await supabase.rpc("cancelar_reserva_atomico", {
+        p_reserva_id: reservaId,
+        p_credito_id: reserva.credito_id,
+      });
+
+      if (error) throw error;
+
+      if (data && data.success) {
+        Swal.fire({
+          icon: "success",
+          title: "Turno cancelado",
+          text: data.message,
+          timer: 1500,
+          showConfirmButton: false,
+          confirmButtonColor: "#a855f7",
         });
-
-        if (rpcError) {
-          console.warn(
-            "RPC increment_creditos falló o no existe, usando fallback manual.",
-            rpcError
-          );
-          // Fallback manual: Traer, sumar, guardar.
-          const { data: currentCredit } = await supabase
-            .from("creditos_alumna")
-            .select("creditos_restantes")
-            .eq("id", reserva.credito_id)
-            .single();
-          if (currentCredit) {
-            await supabase
-              .from("creditos_alumna")
-              .update({
-                creditos_restantes: currentCredit.creditos_restantes + 1,
-              })
-              .eq("id", reserva.credito_id);
-          }
-        }
+      } else {
+        Swal.fire(
+          "Info",
+          data.message || "La reserva ya estaba cancelada",
+          "info"
+        );
       }
-    } catch (err) {
-      console.error("Error devolviendo crédito:", err);
-      Swal.fire(
-        "Atención",
-        "El turno se canceló pero hubo un error devolviendo el crédito. Contactá a la admin.",
-        "warning"
-      );
-    }
-    // -------------------------------------------
 
-    Swal.fire({
-      icon: "success",
-      title: "Turno cancelado",
-      text: "La cama está disponible nuevamente y tu crédito fue devuelto",
-      timer: 1500,
-      showConfirmButton: false,
-      confirmButtonColor: "#a855f7",
-    });
-
-    setTimeout(async () => {
+      // Update State
       await fetchReservas();
       await fetchTodasLasReservas();
-      if (usuario) fetchCreditos(usuario.id);
-    }, 500);
+      if (usuario) await fetchCreditos(usuario.id);
+    } catch (err) {
+      console.error("Error cancelando:", err);
+      Swal.fire(
+        "Error",
+        "Error técnico al cancelar. Intenta de nuevo.",
+        "error"
+      );
+    } finally {
+      setProcessingId(null);
+    }
   };
+  // END of cancelBooking (Remove old lines below)
+  /*
+    // OLD MANUAL LOGIC REMOVED
+  */
 
   if (loading) {
     return (

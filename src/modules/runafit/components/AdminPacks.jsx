@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Check, X } from "lucide-react";
-import { useCreditos } from "../hooks/useCreditos";
+import { useCreditos } from "@core/hooks/useCreditos";
 import Swal from "sweetalert2";
 
 export const AdminPacks = ({ estudio }) => {

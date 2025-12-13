@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Users, X, Save } from "lucide-react";
 import Swal from "sweetalert2";
-import { supabase } from "../lib/supabase";
+import { supabase } from "@core/lib/supabase";
 import { GYM_CONSTANTS } from "../config/gymConstants";
 
 export const UserModal = ({

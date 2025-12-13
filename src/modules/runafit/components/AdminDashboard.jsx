@@ -17,12 +17,12 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "@core/lib/supabase";
 import { AdminPacks } from "./AdminPacks";
 import { UserModal } from "./UserModal";
 import { VenderPackModal } from "./VenderPackModal";
 import { AdminAgenda } from "./AdminAgenda";
-import { useCreditos } from "../hooks/useCreditos";
+import { useCreditos } from "@core/hooks/useCreditos";
 import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 
@@ -629,8 +629,21 @@ const AdminDashboard = () => {
                 const hasReservations = dayReservs.length > 0;
 
                 let statusClass = "text-white hover:bg-white/20";
-                if (hasReservations)
-                  statusClass = "bg-green-400 text-white shadow-sm"; // Simple indicator
+
+                // Logic: Check if date is past or future
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const checkDate = new Date(d.date);
+                checkDate.setHours(0, 0, 0, 0);
+
+                if (hasReservations) {
+                  if (checkDate < today) {
+                    statusClass = "bg-white/20 text-white/70"; // Past (Muted)
+                  } else {
+                    statusClass = "bg-green-400 text-white shadow-sm"; // Future/Today (Active)
+                  }
+                }
+
                 if (isSelected)
                   statusClass = "bg-white text-purple-600 shadow-lg scale-110";
 

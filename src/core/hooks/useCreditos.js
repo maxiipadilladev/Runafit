@@ -108,26 +108,14 @@ export const useCreditos = () => {
         packAnteriorId = packAnterior.id;
       }
 
-      // 3. Iniciar Transacción (simulada)
+      // 3. SECUENCIA SEGURA: Crear Nuevo -> Desactivar Viejo
 
-      // A. Si hubo renovación, marcamos el anterior como "agotado" (vacío y cerrado)
-      if (packAnteriorId) {
-        await supabase
-          .from('creditos_alumna')
-          .update({
-            creditos_restantes: 0, // Vaciamos porque se sumaron al nuevo
-            estado: 'agotado',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', packAnteriorId);
+      // A. Validar fecha antes de nada
+      if (isNaN(fechaVencimiento.getTime())) {
+        throw new Error("Fecha de vencimiento inválida");
       }
 
-      // B. Calcular nueva fecha vencimiento (HOY + dias pack)
-      // This section is now handled by the new logic above.
-
-      // C. Crear el NUEVO registro de crédito (suma total)
-      // La "Caja" tomará este registro por fecha y monto.
-      // El "Sistema de Reservas" tomará este registro como el único activo.
+      // B. Crear el NUEVO registro de crédito (suma total) primero
       const nuevosCreditosTotales = pack.cantidad_clases + creditosAcumulados;
 
       const { data: credito, error: creditoError } = await supabase
@@ -147,6 +135,23 @@ export const useCreditos = () => {
         .single();
 
       if (creditoError) throw creditoError;
+
+      // C. Si se creó correctamente, AHORA desactivamos el anterior (si existe)
+      if (packAnteriorId) {
+        const { error: updateError } = await supabase
+          .from('creditos_alumna')
+          .update({
+            creditos_restantes: 0, // Vaciamos porque se sumaron al nuevo
+            estado: 'agotado',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', packAnteriorId);
+
+        if (updateError) {
+          console.error("Warn: No se pudo cerrar el pack anterior, pero el nuevo se creó.", updateError);
+          // No hacemos throw aquí para no romper el flujo de éxito de la venta
+        }
+      }
 
       Swal.fire({
         icon: 'success',
@@ -272,10 +277,15 @@ export const useCreditos = () => {
       return data;
     } catch (error) {
       console.error('Error creando pack:', error);
+
+      const isDuplicate = error.code === '23505' || error.message?.includes('duplicate key');
+
       Swal.fire({
         icon: 'error',
-        title: 'Error',
-        text: 'No se pudo crear el pack',
+        title: isDuplicate ? 'Nombre duplicado' : 'Error',
+        text: isDuplicate
+          ? 'Ya existe un pack con este nombre en tu estudio.'
+          : 'No se pudo crear el pack',
         confirmButtonColor: '#10b981'
       });
       return null;

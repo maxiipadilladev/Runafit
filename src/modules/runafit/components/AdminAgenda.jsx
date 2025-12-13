@@ -5,7 +5,7 @@ import {
   Calendar as CalendarIcon,
   Users,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "@core/lib/supabase";
 import { GYM_CONSTANTS } from "../config/gymConstants";
 import Swal from "sweetalert2";
 

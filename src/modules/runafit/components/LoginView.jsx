@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { User, Lock, Mail, LogIn, Zap, Eye, EyeOff } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase } from "@core/lib/supabase";
 import bcrypt from "bcryptjs";
 import Swal from "sweetalert2";
 

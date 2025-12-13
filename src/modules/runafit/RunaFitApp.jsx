@@ -9,7 +9,7 @@ import {
   LogOut,
   Bell,
 } from "lucide-react";
-import { supabase } from "./lib/supabase";
+import { supabase } from "@core/lib/supabase";
 
 import ClientBookingView from "./components/ClientBookingView";
 import AdminDashboard from "./components/AdminDashboard";
